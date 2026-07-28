@@ -349,7 +349,10 @@ function streamLiveAudio(state: EngineState) {
   }
 }
 
-/** Neue Hörer:in für /live-stream – steigt wie bei echtem Radio genau jetzt mit ein. */
+/** Neue Hörer:in für /live-stream – steigt wie bei echtem Radio genau jetzt mit ein.
+ *  Bekommt sofort den bereits "gesendeten" Teil des laufenden Elements als einmaligen Schub
+ *  vorab (statt nur die künftige Echtzeit-Trickle abzuwarten) – sonst dauert es bei einer reinen
+ *  Echtzeit-Rate mehrere Sekunden Stille, bis der Player genug Puffer zum Start hat. */
 export function subscribeLive(): ReadableStream<Uint8Array> {
   const state = getState();
   let listener: LiveListener;
@@ -357,6 +360,11 @@ export function subscribeLive(): ReadableStream<Uint8Array> {
     start(controller) {
       listener = { controller };
       state.liveListeners.add(listener);
+      const current = state.plan[0];
+      const entry = current ? state.audioCache.get(current.uid) : undefined;
+      if (entry && state.streamedBytes > 0) {
+        controller.enqueue(new Uint8Array(entry.buffer.subarray(0, state.streamedBytes)));
+      }
     },
     cancel() {
       state.liveListeners.delete(listener);
