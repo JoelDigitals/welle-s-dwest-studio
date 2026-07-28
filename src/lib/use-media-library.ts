@@ -8,6 +8,43 @@ import {
   type MediaRecord,
 } from "./media-db";
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/** Zusätzlich zur lokalen IndexedDB-Bibliothek auf den Server schreiben, damit die autonome
+ *  Sende-Engine (läuft server-seitig, hat keinen Zugriff auf Browser-Speicher) eigene Musik/
+ *  Jingles tatsächlich verwenden kann. Bewusst best-effort: schlägt der Server-Sync fehl (offline,
+ *  Server down), bleibt die lokale Bibliothek trotzdem nutzbar. */
+async function syncMediaToServer(record: MediaRecord) {
+  try {
+    const { blob, ...meta } = record;
+    const dataBase64 = blob ? await blobToBase64(blob) : undefined;
+    await fetch("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meta, dataBase64 }),
+    });
+  } catch {
+    /* egal, lokale Bibliothek bleibt trotzdem nutzbar */
+  }
+}
+
+async function deleteMediaFromServer(id: string) {
+  try {
+    await fetch(`/api/media?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  } catch {
+    /* egal */
+  }
+}
+
 export type UploadMeta = {
   kind: MediaKind;
   title?: string;
@@ -55,7 +92,7 @@ export function useMediaLibrary() {
     async (files: File[], meta: UploadMeta) => {
       for (const file of files) {
         const duration = await readAudioDuration(file);
-        await putMedia({
+        const record: MediaRecord = {
           id: `${meta.kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           kind: meta.kind,
           title: meta.title?.trim() || file.name.replace(/\.[^.]+$/, ""),
@@ -71,7 +108,10 @@ export function useMediaLibrary() {
           sponsorOf: meta.sponsorOf ?? null,
           slot: meta.slot ?? null,
           blob: file,
-        });
+        };
+        await putMedia(record);
+        // Zusätzlich auf den Server, damit die autonome Sende-Engine die Datei auch nutzen kann.
+        void syncMediaToServer(record);
       }
       await refresh();
     },
@@ -81,7 +121,7 @@ export function useMediaLibrary() {
   /** Freie Musik aus dem Netz (CC-Lizenz) in die Playlist übernehmen. */
   const addOnline = useCallback(
     async (track: OnlineTrack) => {
-      await putMedia({
+      const record: MediaRecord = {
         id: `online-${track.id}`,
         kind: "music",
         title: track.title,
@@ -96,7 +136,9 @@ export function useMediaLibrary() {
         streamUrl: track.streamUrl,
         license: track.license,
         source: track.source,
-      });
+      };
+      await putMedia(record);
+      void syncMediaToServer(record);
       await refresh();
     },
     [refresh],
@@ -105,6 +147,7 @@ export function useMediaLibrary() {
   const remove = useCallback(
     async (id: string) => {
       await deleteMedia(id);
+      void deleteMediaFromServer(id);
       await refresh();
     },
     [refresh],

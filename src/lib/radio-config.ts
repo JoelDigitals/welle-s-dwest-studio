@@ -1,4 +1,5 @@
 /** Moderator:innen, 4-Stunden-Sendungen, Sponsoren und Stundenuhr. */
+import { berlinHour, berlinIsWeekend } from "./berlin-time";
 
 export type Host = {
   id: string;
@@ -265,9 +266,12 @@ export const SHOWS: Show[] = [
 ];
 
 export function showForDate(date: Date) {
-  const startHour = Math.floor(date.getHours() / 4) * 4;
+  const at = date.getTime();
+  // Deutsche Ortszeit, nicht die Zeitzone des Servers (Cloud-Hosting läuft oft in UTC) – sonst
+  // läuft zur echten Uhrzeit die falsche Sendung/Moderation.
+  const startHour = Math.floor(berlinHour(at) / 4) * 4;
   const show = SHOWS.find((s) => s.startHour === startHour) ?? SHOWS[0];
-  const weekend = date.getDay() === 0 || date.getDay() === 6;
+  const weekend = berlinIsWeekend(at);
   const host = hostById(weekend ? show.weekendHostId : show.weekdayHostId);
   return { show, host, weekend, startHour };
 }

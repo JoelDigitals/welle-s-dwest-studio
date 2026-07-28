@@ -15,6 +15,8 @@ import { listApprovedAdCampaigns } from "./ad-campaigns-store";
 import { synthesizeSpeechMp3Only } from "./tts-synthesize";
 import { tryHumanizeModeration, tryGenerateStationId } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
+import { listStoredMedia, getStoredFileBuffer } from "./media-store";
+import type { MediaRecord } from "@/lib/media-db";
 
 /**
  * Autonome Sende-Engine: läuft dauerhaft im Server-Prozess, unabhängig davon, ob irgendwo ein
@@ -32,6 +34,7 @@ const REFILL_THRESHOLD_SECONDS = 8 * 60;
 const NEWS_TTL_MS = 5 * 60_000;
 const TRAFFIC_TTL_MS = 3 * 60_000;
 const FREEMUSIC_TTL_MS = 60 * 60_000;
+const MEDIA_TTL_MS = 30_000;
 
 /** duration ist die real gemessene Hördauer (aus den MP3-Frames) – nicht die grobe Planungsschätzung. */
 type AudioEntry = { buffer: Buffer; contentType: string; duration: number };
@@ -45,6 +48,7 @@ type EngineState = {
   news: { items: NewsFeedItem[]; at: number };
   traffic: { items: TrafficFeedItem[]; at: number };
   freeMusic: { items: FreeTrack[]; at: number };
+  media: { items: MediaRecord[]; at: number };
   running: boolean;
   timer: ReturnType<typeof setInterval> | null;
   /** Live-Dauerstream (/live-stream): wer gerade zuhört, und wie weit im aktuellen
@@ -65,6 +69,7 @@ function getState(): EngineState {
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
     freeMusic: { items: [], at: 0 },
+    media: { items: [], at: 0 },
     running: false,
     timer: null,
     liveListeners: new Set(),
@@ -107,6 +112,15 @@ async function refreshFeeds(state: EngineState) {
         .catch(() => undefined),
     );
   }
+  if (now - state.media.at > MEDIA_TTL_MS) {
+    jobs.push(
+      listStoredMedia()
+        .then((items) => {
+          state.media = { items: items as MediaRecord[], at: now };
+        })
+        .catch(() => undefined),
+    );
+  }
   if (now - state.freeMusic.at > FREEMUSIC_TTL_MS || state.freeMusic.items.length === 0) {
     jobs.push(
       Promise.all(
@@ -124,7 +138,7 @@ async function refreshFeeds(state: EngineState) {
 
 function buildContext(state: EngineState): PlanContext {
   return {
-    media: [],
+    media: state.media.items,
     news: state.news.items,
     traffic: state.traffic.items,
     reports: [],
@@ -158,6 +172,14 @@ function trimToAudio(raw: Buffer, fallbackDuration: number): { buffer: Buffer; d
 }
 
 async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
+  // Eigene Bibliothek (Musik/Jingles/Slogans/Werbespots, vom Studio hochgeladen) – geht davon aus,
+  // dass die Datei ein MP3 ist, genau wie der Rest des Systems (KI-Sprachausgabe, freie Musik).
+  if (item.mediaId && !item.streamUrl) {
+    const raw = await getStoredFileBuffer(item.mediaId);
+    if (!raw) return null; // Datei nicht (mehr) auf dem Server vorhanden
+    const { buffer, duration } = trimToAudio(raw, item.duration);
+    return { buffer, contentType: "audio/mpeg", duration };
+  }
   if (item.streamUrl) {
     const res = await fetchWithTimeout(rawStreamUrl(item.streamUrl), 15_000);
     if (!res.ok) throw new Error(`Musik-Stream nicht erreichbar (${res.status})`);

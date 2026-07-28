@@ -48,8 +48,17 @@ function crossfadeWindow(
 const DUCK_VOLUME = 0.18;
 /** So lange dauert es, bis die Musik nach Ende der Ansage wieder volle Lautstärke erreicht. */
 const SWELL_MS = 5000;
+/** Wie lange VOR dem eigentlichen Übergang das nächste Element schon heruntergeladen wird – bewusst
+ *  deutlich größer als das Überblend-Fenster: ein Musiktitel kann mehrere MB groß sein, und über
+ *  echtes Internet (statt localhost) kann das Laden spürbar länger dauern als die paar Sekunden
+ *  Überblendung selbst. Ohne diesen Vorlauf entsteht auf einem echten Server eine hörbare Pause,
+ *  auch wenn auf localhost (praktisch verzögerungsfreies Netzwerk) alles nahtlos wirkt. */
+const PREFETCH_LEAD_S = 15;
 
 type Slot = { audio: HTMLAudioElement; objectUrl: string | null; uid: string | null };
+/** Merkt sich, für welche uid gerade (oder schon) vorab geladen wurde, damit der Übergang nicht
+ *  dieselbe Datei zweimal anfordert und damit unabhängig von der eigentlichen Überblendung ist. */
+type Prefetch = { uid: string; slotKey: "a" | "b"; ready: boolean };
 
 /**
  * Verbindung zum echten Sender (Server-Engine, läuft dauerhaft unabhängig von jedem Tab):
@@ -73,6 +82,7 @@ export function useLiveBroadcast() {
   const activeSlotRef = useRef<"a" | "b">("a");
   const crossfadeUidRef = useRef<string | null>(null);
   const fadeRafRef = useRef<number | null>(null);
+  const prefetchRef = useRef<Prefetch | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -193,8 +203,53 @@ export function useLiveBroadcast() {
     };
   }, [playing, stream, state?.uid, state?.onAir, state?.startedAt]);
 
-  // Kurz bevor das aktuelle Element endet: das nächste schon vorab laden und beide Plätze
-  // überblenden, statt hart auf das nächste Element umzuschalten.
+  // Deutlich VOR dem eigentlichen Übergang: das nächste Element schon im Hintergrund laden (siehe
+  // PREFETCH_LEAD_S). Getrennt vom eigentlichen Überblenden, damit eine langsame Verbindung (echtes
+  // Internet statt localhost) nicht dazu führt, dass der Übergang selbst auf das Laden warten muss.
+  useEffect(() => {
+    if (!playing || stream) return;
+    if (!state?.uid || !state.onAir) return;
+    const next = state.next?.[0];
+    if (!next) return;
+    if (prefetchRef.current?.uid === next.uid) return; // schon geladen oder wird schon geladen
+
+    const activeSlot = getSlot(activeSlotRef.current);
+    if (activeSlot.uid !== state.uid) return;
+
+    const remaining = state.duration - elapsedNow;
+    if (remaining > PREFETCH_LEAD_S) return;
+
+    const inactiveKey = activeSlotRef.current === "a" ? "b" : "a";
+    prefetchRef.current = { uid: next.uid, slotKey: inactiveKey, ready: false };
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/public/onair-audio?uid=${encodeURIComponent(next.uid)}`);
+        if (!res.ok || cancelled) {
+          if (prefetchRef.current?.uid === next.uid) prefetchRef.current = null;
+          return;
+        }
+        const blob = await res.blob();
+        if (cancelled) return;
+        const slot = getSlot(inactiveKey);
+        setSlotSrc(slot, next.uid, blob);
+        if (prefetchRef.current?.uid === next.uid) prefetchRef.current.ready = true;
+      } catch {
+        if (prefetchRef.current?.uid === next.uid) prefetchRef.current = null;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, stream, state?.uid, elapsedNow]);
+
+  // Kurz bevor das aktuelle Element endet: beide Plätze überblenden, statt hart auf das nächste
+  // Element umzuschalten. Nutzt das oben schon vorab geladene Audio – falls das (bei langsamer
+  // Verbindung) noch nicht fertig ist, wartet dieser Effekt einfach auf den nächsten Tick, statt
+  // selbst nochmal von vorn zu laden.
   useEffect(() => {
     if (!playing || stream) return;
     if (!state?.uid || !state.onAir) return;
@@ -218,78 +273,64 @@ export function useLiveBroadcast() {
     const remaining = state.duration - elapsedNow;
     if (remaining > window || remaining <= 0.15) return;
 
-    crossfadeUidRef.current = next.uid;
-    const inactiveKey = activeSlotRef.current === "a" ? "b" : "a";
-    let cancelled = false;
+    const prefetch = prefetchRef.current;
+    if (!prefetch || prefetch.uid !== next.uid || !prefetch.ready) return; // noch am Laden, nächster Tick
 
-    void (async () => {
-      try {
-        const res = await fetch(`/api/public/onair-audio?uid=${encodeURIComponent(next.uid)}`);
-        if (!res.ok || cancelled) {
-          crossfadeUidRef.current = null;
+    crossfadeUidRef.current = next.uid;
+    const inactiveKey = prefetch.slotKey;
+    const incoming = getSlot(inactiveKey);
+    const outgoing = activeSlot;
+    stopFade();
+    // Sicherheitsabstand: falls der Tick etwas spät dran ist, nie mit negativer/verschwindender
+    // Restzeit rechnen (würde die Ansage sofort abschneiden statt sie ausklingen zu lassen).
+    const safeRemaining = Math.max(0.3, remaining);
+
+    if (isTalkIntoMusic) {
+      // Die Ansage bleibt bis zu ihrem eigenen, natürlichen Ende auf voller Lautstärke – wir
+      // fassen sie hier gar nicht an. Die Musik startet leise ("angeduckt") darunter und
+      // schwillt erst nach Ende der Ansage über SWELL_MS auf volle Lautstärke an.
+      incoming.audio.volume = DUCK_VOLUME;
+      void incoming.audio.play().catch(() => undefined);
+      const swellStart = performance.now() + safeRemaining * 1000;
+      const step = (now: number) => {
+        if (now < swellStart) {
+          fadeRafRef.current = requestAnimationFrame(step);
           return;
         }
-        const blob = await res.blob();
-        if (cancelled) return;
-
-        const incoming = getSlot(inactiveKey);
-        setSlotSrc(incoming, next.uid, blob);
-        const outgoing = activeSlot;
-        stopFade();
-
-        if (isTalkIntoMusic) {
-          // Die Ansage bleibt bis zu ihrem eigenen, natürlichen Ende auf voller Lautstärke – wir
-          // fassen sie hier gar nicht an. Die Musik startet leise ("angeduckt") darunter und
-          // schwillt erst nach Ende der Ansage über SWELL_MS auf volle Lautstärke an.
-          incoming.audio.volume = DUCK_VOLUME;
-          await incoming.audio.play().catch(() => undefined);
-          const swellStart = performance.now() + Math.max(0, remaining * 1000);
-          const step = (now: number) => {
-            if (now < swellStart) {
-              fadeRafRef.current = requestAnimationFrame(step);
-              return;
-            }
-            const t = Math.min(1, (now - swellStart) / SWELL_MS);
-            incoming.audio.volume = DUCK_VOLUME + (1 - DUCK_VOLUME) * t;
-            if (t < 1) {
-              fadeRafRef.current = requestAnimationFrame(step);
-              return;
-            }
-            outgoing.audio.pause();
-            activeSlotRef.current = inactiveKey;
-            crossfadeUidRef.current = null;
-            fadeRafRef.current = null;
-          };
+        const t = Math.min(1, (now - swellStart) / SWELL_MS);
+        incoming.audio.volume = DUCK_VOLUME + (1 - DUCK_VOLUME) * t;
+        if (t < 1) {
           fadeRafRef.current = requestAnimationFrame(step);
-        } else {
-          incoming.audio.volume = 0;
-          await incoming.audio.play().catch(() => undefined);
-          const fadeMs = Math.max(200, remaining * 1000);
-          const start = performance.now();
-          const step = (now: number) => {
-            const t = Math.min(1, (now - start) / fadeMs);
-            outgoing.audio.volume = 1 - t;
-            incoming.audio.volume = t;
-            if (t < 1) {
-              fadeRafRef.current = requestAnimationFrame(step);
-              return;
-            }
-            outgoing.audio.pause();
-            activeSlotRef.current = inactiveKey;
-            crossfadeUidRef.current = null;
-            fadeRafRef.current = null;
-          };
-          fadeRafRef.current = requestAnimationFrame(step);
+          return;
         }
-      } catch {
+        outgoing.audio.pause();
+        activeSlotRef.current = inactiveKey;
         crossfadeUidRef.current = null;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        prefetchRef.current = null;
+        fadeRafRef.current = null;
+      };
+      fadeRafRef.current = requestAnimationFrame(step);
+    } else {
+      incoming.audio.volume = 0;
+      void incoming.audio.play().catch(() => undefined);
+      const fadeMs = Math.max(200, safeRemaining * 1000);
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / fadeMs);
+        outgoing.audio.volume = 1 - t;
+        incoming.audio.volume = t;
+        if (t < 1) {
+          fadeRafRef.current = requestAnimationFrame(step);
+          return;
+        }
+        outgoing.audio.pause();
+        activeSlotRef.current = inactiveKey;
+        crossfadeUidRef.current = null;
+        prefetchRef.current = null;
+        fadeRafRef.current = null;
+      };
+      fadeRafRef.current = requestAnimationFrame(step);
+    }
   }, [playing, stream, state?.uid, elapsedNow]);
 
   useEffect(() => {

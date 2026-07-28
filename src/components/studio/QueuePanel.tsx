@@ -105,6 +105,9 @@ export function QueuePanel({
                 <p className="truncate text-xs text-muted-foreground">
                   {clock(item.plannedAt)} · {item.subtitle}
                   {item.fromCache && item.text ? " · aus Cache" : ""}
+                  {item.kind === "music" && item.introSeconds
+                    ? ` · ${item.introSeconds}s bis Gesang`
+                    : ""}
                 </p>
               </div>
               <span className="text-xs tabular-nums text-muted-foreground">

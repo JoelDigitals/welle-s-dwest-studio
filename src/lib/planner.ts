@@ -15,6 +15,7 @@ import type { MediaRecord } from "./media-db";
 import type { FreeTrack, ItemKind, PlanContext, PlanItem } from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
 import { exactSection } from "./autobahn-exits";
+import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
 
 let counter = 0;
 const uid = () => `p${++counter}-${Math.random().toString(36).slice(2, 8)}`;
@@ -28,16 +29,15 @@ export function speakDuration(text: string) {
   return Math.max(8, Math.round((words / 145) * 60));
 }
 
-/** Uhrzeit so, wie sie im Radio gesprochen wird: „11 Uhr 45“, „12 Uhr“. */
+/** Uhrzeit so, wie sie im Radio gesprochen wird: „11 Uhr 45“, „12 Uhr“. Immer deutsche Ortszeit,
+ *  unabhängig von der Zeitzone des Servers (Cloud-Hosting läuft oft in UTC). */
 export function spokenTime(at: number) {
-  const d = new Date(at);
-  const h = d.getHours();
-  const m = d.getMinutes();
+  const h = berlinHour(at);
+  const m = berlinMinute(at);
   return m === 0 ? `${h} Uhr` : `${h} Uhr ${m}`;
 }
 
-const clockLine = (at: number) =>
-  new Date(at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+const clockLine = (at: number) => berlinClock(at);
 
 /** Quellenangaben (Sender/Agenturen) werden im Sprechtext nie genannt. */
 const SOURCE_WORDS =
@@ -350,7 +350,7 @@ export function trafficText(ctx: PlanContext, at: number) {
   const body = lines.length
     ? lines.join(" ")
     : "Auf den Autobahnen im Saarland und in Rheinland-Pfalz läuft der Verkehr zur Zeit störungsfrei. Keine größeren Behinderungen gemeldet.";
-  const seed = new Date(at).getMinutes() + relevant.length;
+  const seed = berlinMinute(at) + relevant.length;
   const intro = pick(
     [
       `${spokenTime(at)}, der Verkehr für das Saarland und Rheinland-Pfalz.`,
@@ -389,6 +389,18 @@ function listenerLines(ctx: PlanContext) {
     ),
   );
   return `Und das haben uns Hörerinnen und Hörer gerade gemeldet. ${lines.join(" ")}`;
+}
+
+/** Wetter-Hörermeldungen (1-2) für den Wetterblock – passend zum Thema, nicht generisch verstreut. */
+function weatherListenerLine(ctx: PlanContext) {
+  const list = freshHotline(ctx)
+    .filter((h) => h.type === "wetter")
+    .slice(0, 2);
+  if (!list.length) return "";
+  const lines = list.map((h) =>
+    clean(`${h.place ? `aus ${h.place}` : "aus der Region"}: ${endWithDot(h.message)}`),
+  );
+  return ` Dazu Meldungen von Hörerinnen und Hörern, ${lines.join(", ")}`;
 }
 
 /** Blitzer-Service – ausschließlich aus Hörermeldungen. */
@@ -450,11 +462,11 @@ export function urgentText(ctx: PlanContext) {
 
 const SEASON_TEMP = [4, 5, 9, 14, 19, 23, 25, 25, 20, 14, 8, 5];
 
-function weatherText(host: Host, at: number, outlook: boolean) {
-  const d = new Date(at);
-  const hour = d.getHours();
-  const base = SEASON_TEMP[d.getMonth()];
-  const high = base + (d.getDate() % 4) - 1;
+function weatherText(host: Host, at: number, outlook: boolean, ctx?: PlanContext) {
+  const hour = berlinHour(at);
+  const date = berlinDate(at);
+  const base = SEASON_TEMP[berlinMonth(at)];
+  const high = base + (date % 4) - 1;
   const low = Math.max(-6, high - 7);
   const sky = pick(
     [
@@ -463,11 +475,11 @@ function weatherText(host: Host, at: number, outlook: boolean) {
       "meist freundlich, nur wenige Wolkenfelder",
       "stark bewölkt und zeitweise etwas Regen",
     ],
-    d.getDate() + hour,
+    date + hour,
   );
   const wind = pick(
     ["schwacher Wind aus Südwest", "mäßiger Wind aus West, in Böen frisch", "kaum Wind"],
-    d.getDate(),
+    date,
   );
   const teil =
     hour < 11
@@ -482,21 +494,22 @@ function weatherText(host: Host, at: number, outlook: boolean) {
   // Schwankung pro Tag, damit sich die Werte über die Woche nicht alle gleich anhören.
   const outlookText = outlook
     ? (() => {
-        const day2 = high + (((d.getDate() + 1) % 5) - 2);
-        const day3 = high + (((d.getDate() + 2) % 5) - 2);
+        const day2 = high + (((date + 1) % 5) - 2);
+        const day3 = high + (((date + 2) % 5) - 2);
         const trend = pick(
           [
             `Morgen wird es mit rund ${day2} Grad ähnlich, übermorgen dann ${day3 > day2 ? "etwas wärmer" : "etwas kühler"} bei ${day3} Grad.`,
             `Der Blick auf die nächsten Tage: morgen ${day2} Grad, ${trendWord(day2, day3)} geht es übermorgen Richtung ${day3} Grad.`,
             `Für die nächsten beiden Tage zeichnet sich ${day2 >= high ? "weiter freundliches" : "etwas wechselhafteres"} Wetter ab, mit Höchstwerten um ${day2} und ${day3} Grad.`,
           ],
-          d.getDate(),
+          date,
         );
         return ` ${trend}`;
       })()
     : " Morgen bleibt es bei ähnlichen Werten.";
+  const listenerLine = ctx ? weatherListenerLine(ctx) : "";
   return clean(
-    `${sponsor ? `Das Wetter auf Welle Südwest, präsentiert von ${sponsor.name}. ` : "Das Wetter auf Welle Südwest. "}Im Saarland und in Rheinland-Pfalz ${teil} ${sky}. Die Höchstwerte liegen bei ${high} Grad, im Saartal bis ${high + 1} Grad, in den Höhenlagen von Hunsrück, Eifel und Pfälzerwald nur um ${high - 3} Grad. Dazu ${wind}. In der Nacht kühlt es auf ${low} Grad ab.${outlookText} ${host.name} wünscht Ihnen einen guten Verlauf.`,
+    `${sponsor ? `Das Wetter auf Welle Südwest, präsentiert von ${sponsor.name}. ` : "Das Wetter auf Welle Südwest. "}Im Saarland und in Rheinland-Pfalz ${teil} ${sky}. Die Höchstwerte liegen bei ${high} Grad, im Saartal bis ${high + 1} Grad, in den Höhenlagen von Hunsrück, Eifel und Pfälzerwald nur um ${high - 3} Grad. Dazu ${wind}. In der Nacht kühlt es auf ${low} Grad ab.${outlookText}${listenerLine} ${host.name} wünscht Ihnen einen guten Verlauf.`,
   );
 }
 
@@ -513,7 +526,7 @@ function weatherHandoffText(host: Host, expert: Host, at: number) {
       `Zeit fürs Wetter, und das übernimmt ${expert.name}. Ich bin gespannt.`,
       `${expert.name} ist wieder mit am Start fürs Wetter. Lass hören.`,
     ],
-    new Date(at).getMinutes(),
+    berlinMinute(at),
   );
 }
 
@@ -525,7 +538,7 @@ function correspondentHandoffText(correspondent: Correspondent, at: number) {
       `Zeit für unseren Blick nach ${correspondent.city} – ${correspondent.name} ist zugeschaltet.`,
       `Wir bleiben nicht nur hier in der Region: ${correspondent.name} meldet sich aus ${correspondent.city}.`,
     ],
-    new Date(at).getMinutes(),
+    berlinMinute(at),
   );
 }
 
@@ -874,7 +887,7 @@ function segueText(opts: {
       `${back}Sie hören Welle Südwest, es ist ${spokenTime(at)}.${next}`,
       `${back}Wir bleiben bei der Musik hier im Südwesten.${next}`,
     ],
-    index + new Date(at).getMinutes(),
+    index + berlinMinute(at),
   );
 }
 
@@ -913,6 +926,10 @@ type MusicSource = {
   source?: string;
 };
 
+/** Ab so vielen eigenen Titeln läuft ausschließlich die eigene Bibliothek (keine freie Musik aus
+ *  dem Netz mehr) – darunter würde es zu schnell repetitiv, deshalb erst ab dieser Schwelle. */
+const MIN_LIBRARY_SONGS_FOR_EXCLUSIVE = 30;
+
 /**
  * Musikpool: eigene Bibliothek (hochgeladene Titel) zuerst, danach kostenlose,
  * kommerziell nutzbare Musik aus dem Netz (Internet Archive / Openverse) als
@@ -927,10 +944,20 @@ function musicPool(ctx: PlanContext): MusicSource[] {
       artist: m.artist || "Unbekannt",
       category: m.category,
       duration: m.duration || 180,
-      mediaId: m.id,
+      // Nur mediaId setzen, wenn es tatsächlich eine lokal hochgeladene Datei ist – bei aus dem
+      // Netz übernommener freier Musik (addOnline) gibt es stattdessen eine streamUrl, direkt
+      // abrufbar ohne Umweg über den Server-Datei-Speicher.
+      mediaId: m.streamUrl ? undefined : m.id,
+      streamUrl: m.streamUrl,
       license: m.license,
       source: m.source,
     }));
+  // Sobald die eigene Bibliothek groß genug ist, läuft ausschließlich eigene Musik – die freie
+  // Musik aus dem Netz ist nur eine Auffüllung, solange noch nicht genug eigene Titel da sind
+  // (sonst würde die Sendung mit zu wenig Titeln schnell repetitiv).
+  if (uploaded.length >= MIN_LIBRARY_SONGS_FOR_EXCLUSIVE) {
+    return shuffle(uploaded);
+  }
   const free: MusicSource[] = (ctx.freeMusic ?? []).map((t) => ({
     key: t.id,
     title: t.title,
@@ -985,7 +1012,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     const hourStart = new Date(start.getTime() + h * 3600_000);
     const hourEnd = hourStart.getTime() + 3600_000;
     const { show, host } = showForDate(hourStart);
-    const isShowStart = hourStart.getHours() === show.startHour;
+    const isShowStart = berlinHour(hourStart.getTime()) === show.startHour;
     let cursor = Math.max(hourStart.getTime(), firstHour);
     if (cursor >= hourEnd) continue;
 
@@ -1175,7 +1202,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         show.topics,
         generalIndex,
         coveredTopics,
-        hourStart.getHours(),
+        berlinHour(hourStart.getTime()),
       );
       const nextTopic = pick(show.topics, generalIndex + 1);
       const text = moderationText({
@@ -1244,7 +1271,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           "weather",
           "Wetter",
           sponsor ? `präsentiert von ${sponsor.name}` : "Saarland & Rheinland-Pfalz",
-          weatherText(host, cursor, outlook),
+          weatherText(host, cursor, outlook, ctx),
           { sponsor: sponsor?.name ?? null },
         );
         return;
@@ -1255,7 +1282,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           "weather",
           "Wetter",
           sponsor ? `präsentiert von ${sponsor.name}` : `mit ${expert.name}`,
-          weatherText(expert, cursor, outlook),
+          weatherText(expert, cursor, outlook, ctx),
           { sponsor: sponsor?.name ?? null, voice: expert.voice, hostId: expert.id, hostName: expert.name },
         );
         return;
@@ -1270,7 +1297,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         "weather",
         "Wetter",
         sponsor ? `präsentiert von ${sponsor.name}` : `mit ${expert.name}`,
-        weatherText(expert, cursor, outlook),
+        weatherText(expert, cursor, outlook, ctx),
         { sponsor: sponsor?.name ?? null, voice: expert.voice, hostId: expert.id, hostName: expert.name },
       );
     };
@@ -1425,11 +1452,17 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
 
 export function upcomingShows(from: Date, count: number) {
   const out: Array<{ start: Date; title: string; host: string; colour: string }> = [];
-  const base = new Date(from);
-  base.setMinutes(0, 0, 0);
-  base.setHours(Math.floor(base.getHours() / 4) * 4);
+  const at = from.getTime();
+  // Auf den Beginn der aktuellen 4-Stunden-Sendung in deutscher Ortszeit zurückrechnen (nicht in
+  // der Zeitzone des Servers) – Sekunden/Millisekunden sind zeitzonenunabhängig, da Europe/Berlin
+  // sich von UTC immer um ganze Stunden unterscheidet.
+  const hour = berlinHour(at);
+  const minute = berlinMinute(at);
+  const blockStartHour = Math.floor(hour / 4) * 4;
+  const secondsIntoBlock = (hour - blockStartHour) * 3600 + minute * 60 + new Date(at).getSeconds();
+  const base = at - secondsIntoBlock * 1000 - new Date(at).getMilliseconds();
   for (let i = 0; i < count; i++) {
-    const d = new Date(base.getTime() + i * 4 * 3600_000);
+    const d = new Date(base + i * 4 * 3600_000);
     const { show, host } = showForDate(d);
     out.push({ start: d, title: show.title, host: host.name, colour: show.colour });
   }

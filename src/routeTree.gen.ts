@@ -19,6 +19,7 @@ import { Route as ApiAudioRouteImport } from './routes/api/audio'
 import { Route as ApiEngineSkipRouteImport } from './routes/api/engine-skip'
 import { Route as ApiFreemusicRouteImport } from './routes/api/freemusic'
 import { Route as ApiIcecastMetadataRouteImport } from './routes/api/icecast-metadata'
+import { Route as ApiMediaRouteImport } from './routes/api/media'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
 import { Route as ApiScriptRouteImport } from './routes/api/script'
@@ -78,6 +79,11 @@ const ApiFreemusicRoute = ApiFreemusicRouteImport.update({
 const ApiIcecastMetadataRoute = ApiIcecastMetadataRouteImport.update({
   id: '/api/icecast-metadata',
   path: '/api/icecast-metadata',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMediaRoute = ApiMediaRouteImport.update({
+  id: '/api/media',
+  path: '/api/media',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiNewsRoute = ApiNewsRouteImport.update({
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
+  '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
   '/api/script': typeof ApiScriptRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
+  '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
   '/api/script': typeof ApiScriptRoute
@@ -187,6 +195,7 @@ export interface FileRoutesById {
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
+  '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
   '/api/script': typeof ApiScriptRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
+    | '/api/media'
     | '/api/news'
     | '/api/newsroom'
     | '/api/script'
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
+    | '/api/media'
     | '/api/news'
     | '/api/newsroom'
     | '/api/script'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
+    | '/api/media'
     | '/api/news'
     | '/api/newsroom'
     | '/api/script'
@@ -278,6 +290,7 @@ export interface RootRouteChildren {
   ApiEngineSkipRoute: typeof ApiEngineSkipRoute
   ApiFreemusicRoute: typeof ApiFreemusicRoute
   ApiIcecastMetadataRoute: typeof ApiIcecastMetadataRoute
+  ApiMediaRoute: typeof ApiMediaRoute
   ApiNewsRoute: typeof ApiNewsRoute
   ApiNewsroomRoute: typeof ApiNewsroomRoute
   ApiScriptRoute: typeof ApiScriptRoute
@@ -360,6 +373,13 @@ declare module '@tanstack/react-router' {
       path: '/api/icecast-metadata'
       fullPath: '/api/icecast-metadata'
       preLoaderRoute: typeof ApiIcecastMetadataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/media': {
+      id: '/api/media'
+      path: '/api/media'
+      fullPath: '/api/media'
+      preLoaderRoute: typeof ApiMediaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/news': {
@@ -446,6 +466,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEngineSkipRoute: ApiEngineSkipRoute,
   ApiFreemusicRoute: ApiFreemusicRoute,
   ApiIcecastMetadataRoute: ApiIcecastMetadataRoute,
+  ApiMediaRoute: ApiMediaRoute,
   ApiNewsRoute: ApiNewsRoute,
   ApiNewsroomRoute: ApiNewsroomRoute,
   ApiScriptRoute: ApiScriptRoute,

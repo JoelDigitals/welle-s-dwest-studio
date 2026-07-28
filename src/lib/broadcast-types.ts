@@ -19,6 +19,9 @@ export type PlanItem = {
   title: string;
   subtitle: string;
   duration: number;
+  /** Grobe Schätzung, wie lange das Intro eines Musiktitels instrumental sein dürfte (nur bei
+   *  kind "music" gesetzt) – Richtwert für die Studio-Anzeige, keine echte Gesangserkennung. */
+  introSeconds?: number;
   /** Geplante Startzeit (Epoch ms) */
   plannedAt: number;
   /** Sprechtext für die KI-Stimme */

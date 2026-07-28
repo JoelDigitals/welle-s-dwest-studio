@@ -16,6 +16,9 @@ dist-ssr
 .nitro
 *.local
 
+# Server-seitige Medienbibliothek (lokale Uploads) – nicht versionieren, nur zur Laufzeit befüllt
+.media-storage
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
