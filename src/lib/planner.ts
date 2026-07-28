@@ -1073,7 +1073,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         title: label,
         subtitle: "Trenner",
         duration: j.duration,
-        mediaId: j.id,
+        mediaId: j.streamUrl ? undefined : j.id,
+        streamUrl: j.streamUrl,
         sponsor: null,
       });
     };
@@ -1145,7 +1146,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           title: j.title,
           subtitle: "Station-Element",
           duration: j.duration,
-          mediaId: j.id,
+          mediaId: j.streamUrl ? undefined : j.id,
+          streamUrl: j.streamUrl,
           sponsor: null,
         });
         return;
@@ -1157,7 +1159,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           title: s.title,
           subtitle: "Slogan",
           duration: s.duration,
-          mediaId: s.id,
+          mediaId: s.streamUrl ? undefined : s.id,
+          streamUrl: s.streamUrl,
           sponsor: null,
         });
         return;
@@ -1182,7 +1185,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           title: `Werbung: ${a.artist || a.title}`,
           subtitle: "Werbespot",
           duration: a.duration,
-          mediaId: a.id,
+          mediaId: a.streamUrl ? undefined : a.id,
+          streamUrl: a.streamUrl,
           sponsor: a.artist || a.title,
         });
       } else {
