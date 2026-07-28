@@ -96,10 +96,22 @@ export function useLiveBroadcast() {
       }
     };
     void load();
-    const t = setInterval(load, 5_000);
+    // Kurzes Intervall: die eigentlichen Übergänge laufen über die Überblendung (Timer im Tab),
+    // die der Browser in Hintergrund-Tabs aber drosselt – ein enger Poll-Takt sorgt dafür, dass
+    // der Client trotzdem schnell mitbekommt, wenn die Server-Engine schon weitergeschaltet hat,
+    // statt erst nach mehreren Sekunden Verzögerung hart nachzuziehen.
+    const t = setInterval(load, 2_000);
+    // Sobald der Tab wieder sichtbar wird (z. B. nach dem Zurückwechseln), sofort neu abfragen,
+    // statt auf das nächste Intervall zu warten – in der Zwischenzeit gedrosselte Timer sonst
+    // erst spät bemerken, dass die Sendung längst weiter ist.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       active = false;
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -181,7 +193,13 @@ export function useLiveBroadcast() {
         setSlotSrc(slot, uid, blob);
         slot.audio.volume = 1;
         const startedAt = state?.startedAt ?? Date.now();
-        const offset = Math.max(0, (Date.now() - startedAt) / 1000);
+        const rawOffset = Math.max(0, (Date.now() - startedAt) / 1000);
+        // Bei kurzen Wortbeiträgen (Ansage, Jingle, Nachrichten, Wetter, ...) nie den Anfang
+        // überspringen – ein Sprung mitten in eine Moderation fällt sofort auf und wirkt wie ein
+        // fehlender Anfang. Nur bei Musik ist "mitten reinschalten" das erwartete Radio-Gefühl,
+        // und auch da kleine Verzögerungen (z. B. durch einen gedrosselten Hintergrund-Tab) nicht
+        // gleich als Sprung werten.
+        const offset = state?.kind === "music" && rawOffset > 2 ? rawOffset : 0;
         const seek = () => {
           try {
             slot.audio.currentTime = offset;
