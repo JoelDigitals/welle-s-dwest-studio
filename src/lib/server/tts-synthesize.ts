@@ -44,6 +44,30 @@ const EDGE_RATE: Record<string, string> = {
   weather: "-2%",
 };
 
+/**
+ * Microsoft Edge TTS bietet exakt 10 deutsche Neural-Stimmen (geprüft gegen den echten
+ * Stimmenkatalog: de-DE Katja/Conrad/Amala/Killian/Florian/Seraphina, de-AT Ingrid/Jonas,
+ * de-CH Leni/Jan) – alle 10 sind bereits an die 10 Sendungsmoderator:innen vergeben. Zusätzliche
+ * Personas (Nachrichtensprecher:in, Wetter-Expert:in, Korrespondent:innen) müssen sich deshalb
+ * zwangsläufig eine der 10 Basis-Stimmen mit einer Moderation teilen. Damit sie trotzdem wie eine
+ * eigenständige Person klingen (nicht wie ein Klon), bekommt jede dieser Zweit-Personas eine
+ * kleine, feste Tonhöhen-Verschiebung – deutlich hörbar als andere Stimme, aber klein genug, um
+ * natürlich zu bleiben (kein Chipmunk-/Roboter-Effekt). hostId ist die Persona-ID aus
+ * radio-config.ts (z. B. "co1"), nicht die Voice-ID.
+ */
+// Edge-TTS erwartet Pitch strikt als "+-<Zahl>Hz" (kein Prozent) – geprüft gegen die
+// Bibliotheks-Validierung. 15–25Hz ist hörbar anders, aber noch natürlich (kein Chipmunk-Effekt).
+const PERSONA_PITCH: Record<string, string> = {
+  na2: "-18Hz", // Nadine Krebs (teilt sich "ballad" mit David Lauth)
+  we1: "+18Hz", // Julia Rombach (teilt sich "verse" mit Ayse Demir)
+  we2: "-22Hz", // Kai Lindner (teilt sich "ash" mit Ben Achterberg)
+  co1: "+22Hz", // Simon Adler (teilt sich "onyx" mit Max Mustermann)
+  co2: "-18Hz", // Laura Feist (teilt sich "nova" mit Jana Weiler)
+  co3: "+18Hz", // Peter Klumb (teilt sich "alloy" mit Tobias Kern)
+  co4: "-22Hz", // Selin Aydin (teilt sich "shimmer" mit Lena Bergmann)
+  co5: "+22Hz", // Marc Dubois (teilt sich "coral" mit Mira Sandhoff)
+};
+
 const STYLES: Record<string, string> = {
   news: "Nachrichtensprache: sachlich, klar akzentuiert, ruhiges aber wachen Tempo, deutliche Betonung der Kernaussagen.",
   traffic:
@@ -89,10 +113,16 @@ function pcmToWav(pcm: Buffer, sampleRate: number, channels = 1, bitDepth = 16):
 }
 
 /** Kostenloser Fallback ohne Freikontingent-Grenze: Microsoft Edge TTS (keine Anmeldung nötig). */
-async function synthesizeWithEdgeTts(text: string, voiceId: string, style: string) {
+async function synthesizeWithEdgeTts(
+  text: string,
+  voiceId: string,
+  style: string,
+  personaId?: string,
+) {
   const voice = EDGE_VOICE_MAP[voiceId] ?? DEFAULT_EDGE_VOICE;
   const rate = EDGE_RATE[style] ?? "+0%";
-  const tts = new EdgeTTS(text, voice, { rate });
+  const pitch = (personaId && PERSONA_PITCH[personaId]) || undefined;
+  const tts = new EdgeTTS(text, voice, pitch ? { rate, pitch } : { rate });
   const result = await tts.synthesize();
   return Buffer.from(await result.audio.arrayBuffer());
 }
@@ -163,6 +193,7 @@ export async function synthesizeSpeechMp3Only(
   rawText: string,
   voiceId: string,
   style: string,
+  personaId?: string,
 ): Promise<Buffer> {
-  return synthesizeWithEdgeTts(rawText.slice(0, 3500), voiceId, style);
+  return synthesizeWithEdgeTts(rawText.slice(0, 3500), voiceId, style, personaId);
 }

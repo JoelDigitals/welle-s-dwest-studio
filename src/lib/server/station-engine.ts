@@ -179,8 +179,15 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
         ? await tryGenerateStationId(text)
         : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
-  // oder den Live-Stream unterbrechen könnte.
-  const raw = await synthesizeSpeechMp3Only(spokenText, item.voice ?? "alloy", item.kind);
+  // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
+  // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste
+  // Tonhöhen-Verschiebung, damit sie trotzdem wie eine eigene Stimme klingen (siehe PERSONA_PITCH).
+  const raw = await synthesizeSpeechMp3Only(
+    spokenText,
+    item.voice ?? "alloy",
+    item.kind,
+    item.hostId,
+  );
   const { buffer, duration } = trimToAudio(raw, item.duration);
   return { buffer, contentType: "audio/mpeg", duration };
 }

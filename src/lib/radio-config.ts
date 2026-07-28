@@ -84,6 +84,99 @@ export const HOSTS: Host[] = [
 
 export const hostById = (id: string) => HOSTS.find((h) => h.id === id) ?? HOSTS[0];
 
+/**
+ * Eigene Sprecher:innen für Nachrichten – bewusst NICHT die Sendungsmoderation, wie im echten
+ * Regionalradio üblich. Rolf Steiner (h5) ist als Host definiert, wird aber nie als
+ * Sendungsmoderator eingesetzt (siehe SHOWS unten) – genau dafür gedacht.
+ */
+export const NEWS_ANCHORS: Host[] = [
+  {
+    id: "na1",
+    name: "Rolf Steiner",
+    voice: "echo",
+    persona: "Nachrichtensprecher, seriös, ordnet Hintergründe kurz ein.",
+    humor: "sachlich",
+  },
+  {
+    id: "na2",
+    name: "Nadine Krebs",
+    voice: "ballad",
+    persona: "Nachrichtenredakteurin, klar, ruhiges Tempo.",
+    humor: "sachlich",
+  },
+];
+export const newsAnchorFor = (seed: number): Host =>
+  NEWS_ANCHORS[Math.abs(Math.round(seed)) % NEWS_ANCHORS.length];
+
+/** Mehrere Wetter-Expert:innen statt immer derselben Person – gelegentlich im Gespräch mit der
+ *  Sendungsmoderation statt als reiner Solo-Vortrag (siehe pushWeather in planner.ts). */
+export const WEATHER_EXPERTS: Host[] = [
+  {
+    id: "we1",
+    name: "Julia Rombach",
+    voice: "verse",
+    persona: "Wetterexpertin, anschaulich, behält auch die kommenden Tage im Blick.",
+    humor: "warm",
+  },
+  {
+    id: "we2",
+    name: "Kai Lindner",
+    voice: "ash",
+    persona: "Wetterexperte, locker, plaudert gern kurz mit der Moderation.",
+    humor: "frech",
+  },
+];
+export const weatherExpertFor = (seed: number): Host =>
+  WEATHER_EXPERTS[Math.abs(Math.round(seed)) % WEATHER_EXPERTS.length];
+
+/** Korrespondent:innen aus wichtigen Städten – melden sich gelegentlich mit einem kurzen
+ *  Bericht, den die Moderation ansagt (siehe pushCorrespondent in planner.ts). */
+export type Correspondent = Host & { city: string };
+export const CORRESPONDENTS: Correspondent[] = [
+  {
+    id: "co1",
+    name: "Simon Adler",
+    city: "Berlin",
+    voice: "onyx",
+    persona: "Hauptstadt-Korrespondent, Politik und Gesellschaft.",
+    humor: "sachlich",
+  },
+  {
+    id: "co2",
+    name: "Laura Feist",
+    city: "New York",
+    voice: "nova",
+    persona: "USA-Korrespondentin, Wirtschaft und Alltag drüben.",
+    humor: "warm",
+  },
+  {
+    id: "co3",
+    name: "Peter Klumb",
+    city: "Mainz",
+    voice: "alloy",
+    persona: "Landeskorrespondent Rheinland-Pfalz, Landtag und Region.",
+    humor: "trocken",
+  },
+  {
+    id: "co4",
+    name: "Selin Aydin",
+    city: "Saarbrücken",
+    voice: "shimmer",
+    persona: "Landeskorrespondentin Saarland, nah an den Menschen.",
+    humor: "frech",
+  },
+  {
+    id: "co5",
+    name: "Marc Dubois",
+    city: "Brüssel",
+    voice: "coral",
+    persona: "EU-Korrespondent, erklärt Brüssel verständlich.",
+    humor: "warm",
+  },
+];
+export const correspondentFor = (seed: number): Correspondent =>
+  CORRESPONDENTS[Math.abs(Math.round(seed)) % CORRESPONDENTS.length];
+
 export type Sponsor = {
   id: string;
   slot: "wetter" | "verkehr" | "nachrichten";
@@ -108,6 +201,9 @@ export type Show = {
   weekendHostId: string;
   colour: string;
   topics: string[];
+  /** Zweite Stimme für diese Sendung (2er-Show) – gelegentlich ein kurzer Schlagabtausch statt
+   *  einer Solo-Moderation (siehe pushModeration in planner.ts). Optional, nicht jede Show hat das. */
+  coHostId?: string;
 };
 
 export const SHOWS: Show[] = [
@@ -146,6 +242,7 @@ export const SHOWS: Show[] = [
     weekendHostId: "h7",
     colour: "Leichte Kost, Hits von heute",
     topics: ["Mittagsthema", "Kultur & Termine", "Witziges aus dem Netz"],
+    coHostId: "h10",
   },
   {
     id: "sh16",

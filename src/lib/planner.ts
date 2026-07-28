@@ -1,4 +1,15 @@
-import { SHOWS, showForDate, showTitleWithHost, sponsorFor, type Host } from "./radio-config";
+import {
+  SHOWS,
+  showForDate,
+  showTitleWithHost,
+  sponsorFor,
+  hostById,
+  newsAnchorFor,
+  weatherExpertFor,
+  correspondentFor,
+  type Host,
+  type Correspondent,
+} from "./radio-config";
 import { SLOGANS } from "./radio-data";
 import type { MediaRecord } from "./media-db";
 import type { FreeTrack, ItemKind, PlanContext, PlanItem } from "./broadcast-types";
@@ -439,7 +450,7 @@ export function urgentText(ctx: PlanContext) {
 
 const SEASON_TEMP = [4, 5, 9, 14, 19, 23, 25, 25, 20, 14, 8, 5];
 
-function weatherText(host: Host, at: number) {
+function weatherText(host: Host, at: number, outlook: boolean) {
   const d = new Date(at);
   const hour = d.getHours();
   const base = SEASON_TEMP[d.getMonth()];
@@ -467,10 +478,94 @@ function weatherText(host: Host, at: number) {
           ? "am Abend"
           : "in der Nacht";
   const sponsor = sponsorFor("wetter");
+  // Echter Zwei-/Dreitagesausblick statt immer nur "morgen bleibt es ähnlich" – mit leichter
+  // Schwankung pro Tag, damit sich die Werte über die Woche nicht alle gleich anhören.
+  const outlookText = outlook
+    ? (() => {
+        const day2 = high + (((d.getDate() + 1) % 5) - 2);
+        const day3 = high + (((d.getDate() + 2) % 5) - 2);
+        const trend = pick(
+          [
+            `Morgen wird es mit rund ${day2} Grad ähnlich, übermorgen dann ${day3 > day2 ? "etwas wärmer" : "etwas kühler"} bei ${day3} Grad.`,
+            `Der Blick auf die nächsten Tage: morgen ${day2} Grad, ${trendWord(day2, day3)} geht es übermorgen Richtung ${day3} Grad.`,
+            `Für die nächsten beiden Tage zeichnet sich ${day2 >= high ? "weiter freundliches" : "etwas wechselhafteres"} Wetter ab, mit Höchstwerten um ${day2} und ${day3} Grad.`,
+          ],
+          d.getDate(),
+        );
+        return ` ${trend}`;
+      })()
+    : " Morgen bleibt es bei ähnlichen Werten.";
   return clean(
-    `${sponsor ? `Das Wetter auf Welle Südwest, präsentiert von ${sponsor.name}. ` : "Das Wetter auf Welle Südwest. "}Im Saarland und in Rheinland-Pfalz ${teil} ${sky}. Die Höchstwerte liegen bei ${high} Grad, im Saartal bis ${high + 1} Grad, in den Höhenlagen von Hunsrück, Eifel und Pfälzerwald nur um ${high - 3} Grad. Dazu ${wind}. In der Nacht kühlt es auf ${low} Grad ab. Morgen bleibt es bei ähnlichen Werten. ${host.name} wünscht Ihnen einen guten Verlauf.`,
+    `${sponsor ? `Das Wetter auf Welle Südwest, präsentiert von ${sponsor.name}. ` : "Das Wetter auf Welle Südwest. "}Im Saarland und in Rheinland-Pfalz ${teil} ${sky}. Die Höchstwerte liegen bei ${high} Grad, im Saartal bis ${high + 1} Grad, in den Höhenlagen von Hunsrück, Eifel und Pfälzerwald nur um ${high - 3} Grad. Dazu ${wind}. In der Nacht kühlt es auf ${low} Grad ab.${outlookText} ${host.name} wünscht Ihnen einen guten Verlauf.`,
   );
 }
+
+function trendWord(a: number, b: number) {
+  return b > a ? "aufwärts" : b < a ? "abwärts" : "seitwärts";
+}
+
+/** Kurze Übergabe der Moderation an eine Wetter-Expert:in – nur die Anmoderation, das eigentliche
+ *  Wetter spricht dann die Expert:in selbst (siehe pushWeather). */
+function weatherHandoffText(host: Host, expert: Host, at: number) {
+  return pick(
+    [
+      `Und jetzt wie immer zum Wetter – dafür ist heute wieder ${expert.name} bei uns. ${expert.name}, wie sieht's aus?`,
+      `Zeit fürs Wetter, und das übernimmt ${expert.name}. Ich bin gespannt.`,
+      `${expert.name} ist wieder mit am Start fürs Wetter. Lass hören.`,
+    ],
+    new Date(at).getMinutes(),
+  );
+}
+
+/** Kurze Übergabe der Moderation an eine Korrespondent:in in einer anderen Stadt. */
+function correspondentHandoffText(correspondent: Correspondent, at: number) {
+  return pick(
+    [
+      `Und jetzt schalten wir zu ${correspondent.name} in ${correspondent.city}. ${correspondent.name}, was gibt's Neues bei Ihnen?`,
+      `Zeit für unseren Blick nach ${correspondent.city} – ${correspondent.name} ist zugeschaltet.`,
+      `Wir bleiben nicht nur hier in der Region: ${correspondent.name} meldet sich aus ${correspondent.city}.`,
+    ],
+    new Date(at).getMinutes(),
+  );
+}
+
+/** Vollständige Fallback-Berichte je Korrespondent:in (falls die KI-Umformulierung mal ausfällt,
+ *  muss der Text auch unverändert vorlesbar sein) – dienen der KI sonst nur als Stil-Vorlage,
+ *  die eigentlichen Inhalte erfindet sie pro Durchlauf neu (siehe tryHumanizeModeration). */
+const CORRESPONDENT_REPORTS: Record<string, string[]> = {
+  co1: [
+    "Hier in Berlin wird gerade wieder viel über die nächste Kabinettssitzung diskutiert, vor allem am Regierungsviertel ist die Stimmung angespannt. Für die Region heißt das vor allem: abwarten, was am Ende wirklich beschlossen wird.",
+    "In Berlin ist es heute ungewöhnlich ruhig für einen Wochentag, die großen Termine liegen erst später in der Woche. Trotzdem laufen im Hintergrund schon die Vorbereitungen für die nächste Pressekonferenz.",
+  ],
+  co2: [
+    "Hier in New York ist gerade wieder viel Bewegung an den Märkten, viele hier reden über die neuesten Zahlen aus der Techbranche. Für Verbraucher bei uns kann sich das mittelfristig auch beim Energiepreis bemerkbar machen.",
+    "In den USA wird gerade intensiv über die nächste Zinsentscheidung spekuliert. Hier vor Ort merkt man die Unsicherheit schon an den Gesichtern der Händler.",
+  ],
+  co3: [
+    "Aus Mainz gibt es Neuigkeiten vom Landtag: dort wird gerade über ein neues Förderprogramm für den ländlichen Raum beraten, das auch bei uns in der Region ankommen könnte.",
+    "Hier in Mainz laufen die Vorbereitungen für die nächste Plenarsitzung, einige Abgeordnete aus unserer Region sind auch dabei.",
+  ],
+  co4: [
+    "Aus Saarbrücken gibt es ein kleines Update: die Innenstadt füllt sich gerade wieder, mehrere neue Geschäfte haben in den letzten Wochen eröffnet.",
+    "Hier in Saarbrücken wird aktuell über die nächsten Schritte bei der Stadtentwicklung diskutiert, viele Anwohner bringen sich gerade aktiv ein.",
+  ],
+  co5: [
+    "Aus Brüssel gibt es Bewegung bei einem neuen Vorhaben, das auch grenznahe Regionen wie unsere betreffen könnte – Details werden aber erst in den kommenden Wochen erwartet.",
+    "Hier in Brüssel ist gerade viel Betrieb rund um die nächste Ratssitzung, die Delegationen treffen schon ein.",
+  ],
+};
+
+/** Kurze, themenunabhängige Reaktionen der zweiten Stimme in einer 2er-Show – funktionieren
+ *  unabhängig vom gerade behandelten Thema, damit auch der Fallback (falls die KI-Umformulierung
+ *  scheitert) immer sinnvoll klingt. */
+const COHOST_REACTIONS = [
+  "Da musste ich echt schmunzeln, gute Story.",
+  "Ehrlich gesagt kann ich das absolut nachvollziehen.",
+  "Das sehe ich ganz genauso, und es passt auch gut zu heute.",
+  "Schöne Geschichte, die hätte ich so nicht erwartet.",
+  "Da bin ich ganz bei dir, das kenne ich auch.",
+  "Stimmt, das ist mir letztens auch aufgefallen.",
+];
 
 /* ---------------------------------------------------------------- Moderation */
 
@@ -910,8 +1005,11 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         plannedAt,
         status: "idle",
         showId: show.id,
-        hostId: host.id,
-        hostName: host.name,
+        // Nachrichtensprecher:in, Wetter-Expert:in oder Korrespondent:in dürfen die Sendungs-
+        // moderation überschreiben (siehe speak()-Aufrufe mit expliziter hostId/hostName in extra) –
+        // ohne das würde hier immer wieder die Sendungsmoderation eingesetzt.
+        hostId: item.hostId ?? host.id,
+        hostName: item.hostName ?? host.name,
       };
       items.push(full);
       cursor = plannedAt + full.duration * 1000;
@@ -1102,6 +1200,18 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           ? `Rubrik „${cat}" war noch offen – Ersatzthema automatisch gewählt.`
           : `Sendungsthema passt zur offenen Rubrik „${cat}".`,
       });
+      // 2er-Show: die zweite Stimme klinkt sich gelegentlich mit einer kurzen, kollegialen
+      // Reaktion ein, statt dass immer nur eine Person allein spricht.
+      if (show.coHostId && generalIndex % 3 === 0) {
+        const coHost = hostById(show.coHostId);
+        speak(
+          "moderation",
+          `Moderation — ${coHost.name}`,
+          "Kurzer Einwurf",
+          pick(COHOST_REACTIONS, generalIndex),
+          { voice: coHost.voice, hostId: coHost.id, hostName: coHost.name },
+        );
+      }
     };
 
     const pushSegue = () => {
@@ -1120,30 +1230,92 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       );
     };
 
+    /** Mal spricht die Sendungsmoderation selbst übers Wetter, mal eine eigene Wetter-Expert:in
+     *  solo, mal als kurzes Gespräch mit Übergabe – dazu abwechselnd mit/ohne Mehrtagesausblick,
+     *  damit sich das nicht jede Stunde gleich anhört. */
     const pushWeather = () => {
       const sponsor = sponsorFor("wetter");
+      generalIndex++;
+      const seed = generalIndex + Math.floor(cursor / 3600_000);
+      const mode = seed % 3;
+      const outlook = seed % 2 === 0;
+      if (mode === 0) {
+        speak(
+          "weather",
+          "Wetter",
+          sponsor ? `präsentiert von ${sponsor.name}` : "Saarland & Rheinland-Pfalz",
+          weatherText(host, cursor, outlook),
+          { sponsor: sponsor?.name ?? null },
+        );
+        return;
+      }
+      const expert = weatherExpertFor(seed);
+      if (mode === 1) {
+        speak(
+          "weather",
+          "Wetter",
+          sponsor ? `präsentiert von ${sponsor.name}` : `mit ${expert.name}`,
+          weatherText(expert, cursor, outlook),
+          { sponsor: sponsor?.name ?? null, voice: expert.voice, hostId: expert.id, hostName: expert.name },
+        );
+        return;
+      }
       speak(
         "weather",
         "Wetter",
-        sponsor ? `präsentiert von ${sponsor.name}` : "Saarland & Rheinland-Pfalz",
-        weatherText(host, cursor),
-        { sponsor: sponsor?.name ?? null },
+        "Übergabe an die Wetter-Expert:in",
+        weatherHandoffText(host, expert, cursor),
+      );
+      speak(
+        "weather",
+        "Wetter",
+        sponsor ? `präsentiert von ${sponsor.name}` : `mit ${expert.name}`,
+        weatherText(expert, cursor, outlook),
+        { sponsor: sponsor?.name ?? null, voice: expert.voice, hostId: expert.id, hostName: expert.name },
       );
     };
 
-    /** Nachrichtenblock: Anmoderation → Trenner → Meldungen → Trenner → Verkehr. */
+    /** Gelegentlicher Blick über die Region hinaus: die Moderation schaltet zu einer
+     *  Korrespondent:in in einer anderen Stadt (Berlin, USA, Mainz, Saarbrücken, Brüssel). */
+    const pushCorrespondent = () => {
+      generalIndex++;
+      const correspondent = correspondentFor(generalIndex + Math.floor(cursor / 3600_000));
+      speak(
+        "moderation",
+        `Schalte zu ${correspondent.city}`,
+        "Übergabe",
+        correspondentHandoffText(correspondent, cursor),
+      );
+      speak(
+        "moderation",
+        `Bericht aus ${correspondent.city}`,
+        correspondent.name,
+        pick(CORRESPONDENT_REPORTS[correspondent.id] ?? [], generalIndex),
+        { voice: correspondent.voice, hostId: correspondent.id, hostName: correspondent.name },
+      );
+    };
+
+    /** Nachrichtenblock: Anmoderation → Trenner → Meldungen → Trenner → Verkehr. Läuft über
+     *  eine eigene Nachrichtensprecher:in, nicht über die Sendungsmoderation – wie im echten
+     *  Regionalradio üblich. */
     const pushNewsBlock = (mode: "full" | "short", at: number) => {
+      const anchor = newsAnchorFor(at / 3600_000);
       const stories = newsStories(ctx, mode === "full" ? 4 : 5);
-      const intro = newsIntroText(host, at, stories, mode);
-      const body = newsBodyText(host, stories, mode, at);
+      const intro = newsIntroText(anchor, at, stories, mode);
+      const body = newsBodyText(anchor, stories, mode, at);
       const first = push(
         {
           kind: "news",
-          title: mode === "full" ? "Nachrichten — Anmoderation" : "Kurznachrichten — Anmoderation",
+          title:
+            mode === "full"
+              ? `Nachrichten — Anmoderation`
+              : `Kurznachrichten — Anmoderation`,
           subtitle: `${clockLine(at)} Uhr · Themen`,
           duration: speakDuration(intro),
           text: intro,
-          voice: host.voice,
+          voice: anchor.voice,
+          hostId: anchor.id,
+          hostName: anchor.name,
           sponsor: null,
           hardStart: at,
           needsApproval: approval,
@@ -1163,7 +1335,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         // die tatsächlich gemessene Audiolänge, sobald sie erzeugt wurde.
         duration: speakDuration(body),
         text: body,
-        voice: host.voice,
+        voice: anchor.voice,
+        hostId: anchor.id,
+        hostName: anchor.name,
         sponsor: null,
         needsApproval: approval,
         approved: !approval,
@@ -1207,6 +1381,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       "ad",
       "moderation",
       "jingle",
+      "korrespondent",
     ] as const;
     let rotationIndex = 0;
 
@@ -1226,6 +1401,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         // … dann genau einmal ansagen, danach abspielen. Nie doppelt.
         if (next === "moderation") pushModeration();
         else if (next === "segue") pushSegue();
+        else if (next === "korrespondent") pushCorrespondent();
         else {
           if (next === "ad") {
             if (!pushAd()) pushJingle();
