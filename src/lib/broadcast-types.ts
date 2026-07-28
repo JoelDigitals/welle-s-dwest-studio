@@ -1,0 +1,165 @@
+import type { MediaRecord } from "./media-db";
+
+export type ItemKind =
+  | "music"
+  | "jingle"
+  | "showopener"
+  | "moderation"
+  | "news"
+  | "traffic"
+  | "weather"
+  | "ad"
+  | "slogan";
+
+export type PrepStatus = "idle" | "preparing" | "ready" | "error";
+
+export type PlanItem = {
+  uid: string;
+  kind: ItemKind;
+  title: string;
+  subtitle: string;
+  duration: number;
+  /** Geplante Startzeit (Epoch ms) */
+  plannedAt: number;
+  /** Sprechtext für die KI-Stimme */
+  text?: string;
+  voice?: string;
+  /** Verweis auf hochgeladene Datei in der Medien-Datenbank */
+  mediaId?: string;
+  /** Direkte Stream-URL (freie Musik aus dem Netz) */
+  streamUrl?: string;
+  /** Lizenz + Quelle (Nachweispflicht bei freier Musik) */
+  license?: string;
+  source?: string;
+  /** Harte Zeitmarke: muss exakt zu dieser Uhrzeit starten (Epoch ms) */
+  hardStart?: number;
+  /** Vorhören/Freigabe nötig, bevor das Element on air darf */
+  needsApproval?: boolean;
+  approved?: boolean;
+  showId?: string;
+  hostId?: string;
+  hostName?: string;
+  sponsor?: string | null;
+  status: PrepStatus;
+  /** Themen-Vorschau: gewählte Rubrik dieser Moderation */
+  topicCat?: string;
+  /** Rubriken, die im Plan bereits abgedeckt sind */
+  topicCovered?: string[];
+  /** Rubriken, die noch offen sind */
+  topicOpen?: string[];
+  /** true, wenn der Planer ein Ersatzthema gewählt hat */
+  topicFallback?: boolean;
+  /** Begründung/Regel, warum der Planer dieses Thema gewählt hat */
+  topicRule?: string;
+  error?: string;
+  /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
+  audioUrl?: string;
+  /** true, sobald das Audio aus dem 48h-Cache kam */
+  fromCache?: boolean;
+};
+
+export type NewsFeedItem = {
+  id: string;
+  region: "Saarland" | "Rheinland-Pfalz" | "Welt";
+  source: string;
+  headline: string;
+  body: string;
+  link?: string;
+  publishedAt?: string;
+};
+
+export type TrafficFeedItem = {
+  id: string;
+  road: string;
+  region: "Saarland" | "Rheinland-Pfalz";
+  headline: string;
+  message: string;
+  since?: string | null;
+};
+
+export type Report = {
+  id: string;
+  author: string;
+  title: string;
+  body: string;
+  region: "Saarland" | "Rheinland-Pfalz" | "Welt";
+  approved: boolean;
+  createdAt: number;
+};
+
+/** Art einer Hörermeldung – nicht mehr nur Verkehr, sondern alles, was Hörer:innen melden wollen. */
+export type HotlineReportType =
+  "verkehr" | "blitzer" | "wetter" | "gruss" | "musikwunsch" | "lob_kritik" | "sonstiges";
+
+/** Live-Meldung aus der Hörer-Hotline. */
+export type HotlineReport = {
+  id: string;
+  type: HotlineReportType;
+  region: "Saarland" | "Rheinland-Pfalz";
+  place: string;
+  road: string;
+  message: string;
+  caller: string;
+  /** Optionale Rückrufmöglichkeit (E-Mail/Telefon) – wird nie on air genannt. */
+  contact: string;
+  createdAt: number;
+};
+
+export type LogEntry = {
+  id: string;
+  at: number;
+  level: "info" | "warn" | "error";
+  message: string;
+};
+
+export type PlanContext = {
+  media: MediaRecord[];
+  news: NewsFeedItem[];
+  traffic: TrafficFeedItem[];
+  reports: Report[];
+  /** Live-Meldungen der Hörer (Blitzer, Staus, Gefahren) */
+  hotline?: HotlineReport[];
+  /** Kostenlose, kommerziell nutzbare Musik aus dem Netz */
+  freeMusic?: FreeTrack[];
+  /** Freigegebene Werbekunden (nur nach erfolgreicher Bewerbung) */
+  adCampaigns?: AdCampaign[];
+  /** Vorab geplante Livesendungen – in diesen Fenstern plant der Autopilot nichts */
+  liveSlots?: LiveSlot[];
+  /** KI-Moderationen, Werbung und Nachrichten erst nach Freigabe senden */
+  approvalRequired?: boolean;
+};
+
+/** Werbe-Bewerbung: Werbung läuft erst nach Prüfung und Freigabe. */
+export type AdCampaign = {
+  id: string;
+  advertiser: string;
+  contact: string;
+  text: string;
+  /** eingereicht → geprüft → freigegeben / abgelehnt */
+  status: "eingereicht" | "geprueft" | "freigegeben" | "abgelehnt";
+  perHour: number;
+  createdAt: number;
+};
+
+/** Vorab geplante Livesendung (manuell moderiert). */
+export type LiveSlot = {
+  id: string;
+  title: string;
+  hostId: string;
+  hostName: string;
+  /** Startzeit (Epoch ms) und Dauer in Minuten */
+  startAt: number;
+  minutes: number;
+  note: string;
+};
+
+export type FreeTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  category: string;
+  duration: number;
+  streamUrl: string;
+  license: string;
+  source: string;
+};
