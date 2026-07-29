@@ -7,6 +7,7 @@ import {
   removeAdCampaign,
   updateAdCampaignStatus,
 } from "@/lib/server/ad-campaigns-store";
+import { requireAuth } from "@/lib/server/auth";
 
 /** Öffentliche Werbe-Bewerbungen: Firmen können sich ohne Studio-Zugang bewerben. */
 const cors = {
@@ -53,6 +54,8 @@ export const Route = createFileRoute("/api/public/ad-requests")({
       // Studio-Freigabe (Prüfen/Freigeben/Ablehnen) – muss serverseitig ankommen, damit die
       // autonome Sende-Engine freigegebene Werbung auch tatsächlich einplant.
       PATCH: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const parsed = statusSchema.safeParse(await request.json().catch(() => null));
         if (!parsed.success) {
           return Response.json({ error: "id/status ungültig." }, { status: 400, headers: cors });
@@ -64,6 +67,8 @@ export const Route = createFileRoute("/api/public/ad-requests")({
         return Response.json({ ok: true, campaign: updated }, { headers: cors });
       },
       DELETE: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const id = new URL(request.url).searchParams.get("id");
         if (!id) return Response.json({ error: "id fehlt." }, { status: 400, headers: cors });
         removeAdCampaign(id);

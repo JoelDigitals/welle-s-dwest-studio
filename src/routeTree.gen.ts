@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HotlineRouteImport } from './routes/hotline'
 import { Route as LiveStreamRouteImport } from './routes/live-stream'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as PlayerRouteImport } from './routes/player'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as WerbungRouteImport } from './routes/werbung'
@@ -24,10 +25,15 @@ import { Route as ApiLiveQueueRouteImport } from './routes/api/live-queue'
 import { Route as ApiMediaRouteImport } from './routes/api/media'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
+import { Route as ApiScheduledShowsRouteImport } from './routes/api/scheduled-shows'
 import { Route as ApiScriptRouteImport } from './routes/api/script'
 import { Route as ApiStreamhealthRouteImport } from './routes/api/streamhealth'
 import { Route as ApiTrafficRouteImport } from './routes/api/traffic'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
+import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
+import { Route as ApiAuthLogoutRouteImport } from './routes/api/auth/logout'
+import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
+import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
 import { Route as ApiPublicAdRequestsRouteImport } from './routes/api/public/ad-requests'
 import { Route as ApiPublicHotlineRouteImport } from './routes/api/public/hotline'
 import { Route as ApiPublicNowplayingRouteImport } from './routes/api/public/nowplaying'
@@ -46,6 +52,11 @@ const HotlineRoute = HotlineRouteImport.update({
 const LiveStreamRoute = LiveStreamRouteImport.update({
   id: '/live-stream',
   path: '/live-stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlayerRoute = PlayerRouteImport.update({
@@ -108,6 +119,11 @@ const ApiNewsroomRoute = ApiNewsroomRouteImport.update({
   path: '/api/newsroom',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiScheduledShowsRoute = ApiScheduledShowsRouteImport.update({
+  id: '/api/scheduled-shows',
+  path: '/api/scheduled-shows',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiScriptRoute = ApiScriptRouteImport.update({
   id: '/api/script',
   path: '/api/script',
@@ -126,6 +142,26 @@ const ApiTrafficRoute = ApiTrafficRouteImport.update({
 const ApiTtsRoute = ApiTtsRouteImport.update({
   id: '/api/tts',
   path: '/api/tts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthLoginRoute = ApiAuthLoginRouteImport.update({
+  id: '/api/auth/login',
+  path: '/api/auth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthLogoutRoute = ApiAuthLogoutRouteImport.update({
+  id: '/api/auth/logout',
+  path: '/api/auth/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthMeRoute = ApiAuthMeRouteImport.update({
+  id: '/api/auth/me',
+  path: '/api/auth/me',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthRegisterRoute = ApiAuthRegisterRouteImport.update({
+  id: '/api/auth/register',
+  path: '/api/auth/register',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicAdRequestsRoute = ApiPublicAdRequestsRouteImport.update({
@@ -153,6 +189,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/hotline': typeof HotlineRoute
   '/live-stream': typeof LiveStreamRoute
+  '/login': typeof LoginRoute
   '/player': typeof PlayerRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/werbung': typeof WerbungRoute
@@ -165,10 +202,15 @@ export interface FileRoutesByFullPath {
   '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
+  '/api/scheduled-shows': typeof ApiScheduledShowsRoute
   '/api/script': typeof ApiScriptRoute
   '/api/streamhealth': typeof ApiStreamhealthRoute
   '/api/traffic': typeof ApiTrafficRoute
   '/api/tts': typeof ApiTtsRoute
+  '/api/auth/login': typeof ApiAuthLoginRoute
+  '/api/auth/logout': typeof ApiAuthLogoutRoute
+  '/api/auth/me': typeof ApiAuthMeRoute
+  '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
@@ -178,6 +220,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/hotline': typeof HotlineRoute
   '/live-stream': typeof LiveStreamRoute
+  '/login': typeof LoginRoute
   '/player': typeof PlayerRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/werbung': typeof WerbungRoute
@@ -190,10 +233,15 @@ export interface FileRoutesByTo {
   '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
+  '/api/scheduled-shows': typeof ApiScheduledShowsRoute
   '/api/script': typeof ApiScriptRoute
   '/api/streamhealth': typeof ApiStreamhealthRoute
   '/api/traffic': typeof ApiTrafficRoute
   '/api/tts': typeof ApiTtsRoute
+  '/api/auth/login': typeof ApiAuthLoginRoute
+  '/api/auth/logout': typeof ApiAuthLogoutRoute
+  '/api/auth/me': typeof ApiAuthMeRoute
+  '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
@@ -204,6 +252,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/hotline': typeof HotlineRoute
   '/live-stream': typeof LiveStreamRoute
+  '/login': typeof LoginRoute
   '/player': typeof PlayerRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/werbung': typeof WerbungRoute
@@ -216,10 +265,15 @@ export interface FileRoutesById {
   '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
+  '/api/scheduled-shows': typeof ApiScheduledShowsRoute
   '/api/script': typeof ApiScriptRoute
   '/api/streamhealth': typeof ApiStreamhealthRoute
   '/api/traffic': typeof ApiTrafficRoute
   '/api/tts': typeof ApiTtsRoute
+  '/api/auth/login': typeof ApiAuthLoginRoute
+  '/api/auth/logout': typeof ApiAuthLogoutRoute
+  '/api/auth/me': typeof ApiAuthMeRoute
+  '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
@@ -231,6 +285,7 @@ export interface FileRouteTypes {
     | '/'
     | '/hotline'
     | '/live-stream'
+    | '/login'
     | '/player'
     | '/sitemap.xml'
     | '/werbung'
@@ -243,10 +298,15 @@ export interface FileRouteTypes {
     | '/api/media'
     | '/api/news'
     | '/api/newsroom'
+    | '/api/scheduled-shows'
     | '/api/script'
     | '/api/streamhealth'
     | '/api/traffic'
     | '/api/tts'
+    | '/api/auth/login'
+    | '/api/auth/logout'
+    | '/api/auth/me'
+    | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
     | '/api/public/nowplaying'
@@ -256,6 +316,7 @@ export interface FileRouteTypes {
     | '/'
     | '/hotline'
     | '/live-stream'
+    | '/login'
     | '/player'
     | '/sitemap.xml'
     | '/werbung'
@@ -268,10 +329,15 @@ export interface FileRouteTypes {
     | '/api/media'
     | '/api/news'
     | '/api/newsroom'
+    | '/api/scheduled-shows'
     | '/api/script'
     | '/api/streamhealth'
     | '/api/traffic'
     | '/api/tts'
+    | '/api/auth/login'
+    | '/api/auth/logout'
+    | '/api/auth/me'
+    | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
     | '/api/public/nowplaying'
@@ -281,6 +347,7 @@ export interface FileRouteTypes {
     | '/'
     | '/hotline'
     | '/live-stream'
+    | '/login'
     | '/player'
     | '/sitemap.xml'
     | '/werbung'
@@ -293,10 +360,15 @@ export interface FileRouteTypes {
     | '/api/media'
     | '/api/news'
     | '/api/newsroom'
+    | '/api/scheduled-shows'
     | '/api/script'
     | '/api/streamhealth'
     | '/api/traffic'
     | '/api/tts'
+    | '/api/auth/login'
+    | '/api/auth/logout'
+    | '/api/auth/me'
+    | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
     | '/api/public/nowplaying'
@@ -307,6 +379,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HotlineRoute: typeof HotlineRoute
   LiveStreamRoute: typeof LiveStreamRoute
+  LoginRoute: typeof LoginRoute
   PlayerRoute: typeof PlayerRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   WerbungRoute: typeof WerbungRoute
@@ -319,10 +392,15 @@ export interface RootRouteChildren {
   ApiMediaRoute: typeof ApiMediaRoute
   ApiNewsRoute: typeof ApiNewsRoute
   ApiNewsroomRoute: typeof ApiNewsroomRoute
+  ApiScheduledShowsRoute: typeof ApiScheduledShowsRoute
   ApiScriptRoute: typeof ApiScriptRoute
   ApiStreamhealthRoute: typeof ApiStreamhealthRoute
   ApiTrafficRoute: typeof ApiTrafficRoute
   ApiTtsRoute: typeof ApiTtsRoute
+  ApiAuthLoginRoute: typeof ApiAuthLoginRoute
+  ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
+  ApiAuthMeRoute: typeof ApiAuthMeRoute
+  ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
   ApiPublicAdRequestsRoute: typeof ApiPublicAdRequestsRoute
   ApiPublicHotlineRoute: typeof ApiPublicHotlineRoute
   ApiPublicNowplayingRoute: typeof ApiPublicNowplayingRoute
@@ -350,6 +428,13 @@ declare module '@tanstack/react-router' {
       path: '/live-stream'
       fullPath: '/live-stream'
       preLoaderRoute: typeof LiveStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/player': {
@@ -436,6 +521,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNewsroomRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/scheduled-shows': {
+      id: '/api/scheduled-shows'
+      path: '/api/scheduled-shows'
+      fullPath: '/api/scheduled-shows'
+      preLoaderRoute: typeof ApiScheduledShowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/script': {
       id: '/api/script'
       path: '/api/script'
@@ -462,6 +554,34 @@ declare module '@tanstack/react-router' {
       path: '/api/tts'
       fullPath: '/api/tts'
       preLoaderRoute: typeof ApiTtsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/login': {
+      id: '/api/auth/login'
+      path: '/api/auth/login'
+      fullPath: '/api/auth/login'
+      preLoaderRoute: typeof ApiAuthLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/logout': {
+      id: '/api/auth/logout'
+      path: '/api/auth/logout'
+      fullPath: '/api/auth/logout'
+      preLoaderRoute: typeof ApiAuthLogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/me': {
+      id: '/api/auth/me'
+      path: '/api/auth/me'
+      fullPath: '/api/auth/me'
+      preLoaderRoute: typeof ApiAuthMeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/register': {
+      id: '/api/auth/register'
+      path: '/api/auth/register'
+      fullPath: '/api/auth/register'
+      preLoaderRoute: typeof ApiAuthRegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/ad-requests': {
@@ -499,6 +619,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HotlineRoute: HotlineRoute,
   LiveStreamRoute: LiveStreamRoute,
+  LoginRoute: LoginRoute,
   PlayerRoute: PlayerRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   WerbungRoute: WerbungRoute,
@@ -511,10 +632,15 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMediaRoute: ApiMediaRoute,
   ApiNewsRoute: ApiNewsRoute,
   ApiNewsroomRoute: ApiNewsroomRoute,
+  ApiScheduledShowsRoute: ApiScheduledShowsRoute,
   ApiScriptRoute: ApiScriptRoute,
   ApiStreamhealthRoute: ApiStreamhealthRoute,
   ApiTrafficRoute: ApiTrafficRoute,
   ApiTtsRoute: ApiTtsRoute,
+  ApiAuthLoginRoute: ApiAuthLoginRoute,
+  ApiAuthLogoutRoute: ApiAuthLogoutRoute,
+  ApiAuthMeRoute: ApiAuthMeRoute,
+  ApiAuthRegisterRoute: ApiAuthRegisterRoute,
   ApiPublicAdRequestsRoute: ApiPublicAdRequestsRoute,
   ApiPublicHotlineRoute: ApiPublicHotlineRoute,
   ApiPublicNowplayingRoute: ApiPublicNowplayingRoute,

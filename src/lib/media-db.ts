@@ -4,7 +4,7 @@
  * generierte KI-Audios mit 48h-Gültigkeit.
  */
 
-export type MediaKind = "music" | "jingle" | "slogan" | "ad";
+export type MediaKind = "music" | "jingle" | "slogan" | "ad" | "recording";
 
 export type MediaRecord = {
   id: string;
@@ -31,6 +31,9 @@ export type MediaRecord = {
   /** Lizenzhinweis für freie Musik */
   license?: string;
   source?: string;
+  /** Nur bei "recording" gesetzt (vom Server anhand der Login-Session vergeben, nicht vom Client
+   *  frei wählbar): wer die Aufnahme hochgeladen hat – andere Accounts sehen sie nicht. */
+  ownerId?: string;
 };
 
 export type TtsRecord = {

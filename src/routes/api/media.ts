@@ -6,6 +6,7 @@ import {
   removeStoredMedia,
 } from "@/lib/server/media-store";
 import type { MediaRecord } from "@/lib/media-db";
+import { requireAuth } from "@/lib/server/auth";
 
 /**
  * Server-seitige Medienbibliothek: Musik/Jingles/Slogans/Werbespots, die die autonome
@@ -24,14 +25,29 @@ export const Route = createFileRoute("/api/media")({
   server: {
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
-      GET: async () => Response.json(await listStoredMedia(), { headers: cors }),
+      // Aufnahmen sind privat: nur die eigenen sichtbar, alles andere (Musik/Jingles/Slogans/
+      // Werbung) bleibt für alle sichtbar, wie bisher.
+      GET: async () => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
+        const all = await listStoredMedia();
+        const visible = all.filter((m) => m.kind !== "recording" || m.ownerId === user.userId);
+        return Response.json(visible, { headers: cors });
+      },
       POST: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const body = (await request.json().catch(() => null)) as {
           meta?: Omit<MediaRecord, "blob">;
           dataBase64?: string;
         } | null;
         if (!body?.meta?.id) {
           return Response.json({ error: "Ungültige Daten" }, { status: 400, headers: cors });
+        }
+        // Besitzer:in wird immer serverseitig aus der Login-Session gesetzt – ein vom Client
+        // mitgeschickter ownerId-Wert würde sonst erlauben, sich fremde Aufnahmen zuzuschreiben.
+        if (body.meta.kind === "recording") {
+          body.meta.ownerId = user.userId;
         }
         try {
           if (body.dataBase64) {
@@ -49,8 +65,15 @@ export const Route = createFileRoute("/api/media")({
         }
       },
       DELETE: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const id = new URL(request.url).searchParams.get("id");
         if (!id) return Response.json({ error: "id fehlt" }, { status: 400, headers: cors });
+        // Aufnahmen dürfen nur von der Person gelöscht werden, der sie gehören.
+        const existing = (await listStoredMedia()).find((m) => m.id === id);
+        if (existing?.kind === "recording" && existing.ownerId !== user.userId) {
+          return Response.json({ error: "Nicht deine Aufnahme" }, { status: 403, headers: cors });
+        }
         await removeStoredMedia(id);
         return Response.json({ ok: true }, { headers: cors });
       },

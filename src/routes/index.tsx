@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { Radio } from "lucide-react";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { Radio, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { requireAuth } from "@/lib/server/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OnAirBar } from "@/components/studio/OnAirBar";
 import { QueuePanel } from "@/components/studio/QueuePanel";
@@ -32,6 +35,8 @@ const TITLE = "Welle Südwest – Radiostudio für Saarland & Rheinland-Pfalz";
 const DESCRIPTION =
   "Sendestudio mit Autopilot, Live-Mischpult, KI-Moderation, Nachrichten aus Saarland, Rheinland-Pfalz und der Welt sowie Verkehrsmeldungen.";
 
+const getSessionUser = createServerFn({ method: "GET" }).handler(() => requireAuth());
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -41,10 +46,21 @@ export const Route = createFileRoute("/")({
       { property: "og:description", content: DESCRIPTION },
     ],
   }),
+  beforeLoad: async () => {
+    const user = await getSessionUser();
+    if (!user) throw redirect({ to: "/login" });
+    return { user };
+  },
   component: Index,
 });
 
 function Index() {
+  const { user } = Route.useRouteContext();
+  const navigate = Route.useNavigate();
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    navigate({ to: "/login" });
+  }, [navigate]);
   const library = useMediaLibrary();
   const newsQuery = useNewsFeed();
   const trafficQuery = useTrafficFeed();
@@ -221,6 +237,13 @@ function Index() {
             {traffic.length} Verkehr
           </span>
           <span className="rounded-full border border-border px-3 py-1">News :00 · :30</span>
+          <span className="rounded-full border border-border px-3 py-1">
+            Eingeloggt als {user.displayName}
+          </span>
+          <Button variant="ghost" size="sm" className="h-auto gap-1 px-2 py-1" onClick={logout}>
+            <LogOut className="size-3.5" />
+            Abmelden
+          </Button>
         </div>
       </header>
 
@@ -286,7 +309,7 @@ function Index() {
             <LivePanel
               liveMode={live.nowPlaying?.live ?? false}
               setLiveMode={(v) => void liveStudio.setLiveMode(v)}
-              queue={livePlan}
+              queue={liveStudio.queue}
               playNow={liveStudio.playNow}
               cueNext={liveStudio.cueNext}
               remove={(uid) => void liveStudio.remove(uid)}
@@ -294,6 +317,7 @@ function Index() {
               skip={() => void liveStudio.skip()}
               media={library.media}
               traffic={traffic}
+              news={news}
             />
           </TabsContent>
 

@@ -196,12 +196,11 @@ export function useLiveBroadcast() {
         slot.audio.volume = 1;
         const startedAt = state?.startedAt ?? Date.now();
         const rawOffset = Math.max(0, (Date.now() - startedAt) / 1000);
-        // Bei kurzen Wortbeiträgen (Ansage, Jingle, Nachrichten, Wetter, ...) nie den Anfang
-        // überspringen – ein Sprung mitten in eine Moderation fällt sofort auf und wirkt wie ein
-        // fehlender Anfang. Nur bei Musik ist "mitten reinschalten" das erwartete Radio-Gefühl,
-        // und auch da kleine Verzögerungen (z. B. durch einen gedrosselten Hintergrund-Tab) nicht
-        // gleich als Sprung werten.
-        const offset = state?.kind === "music" && rawOffset > 2 ? rawOffset : 0;
+        // Der Livestream muss IMMER an der tatsächlich aktuellen Stelle einsteigen, wie echtes
+        // Radio – egal ob gerade Musik oder eine Ansage/Nachricht/Werbung läuft. Kleine
+        // Verzögerungen (z. B. durch einen kurz gedrosselten Hintergrund-Tab) werden nicht als
+        // Sprung gewertet, deshalb erst ab >2s tatsächlich vorspulen.
+        const offset = rawOffset > 2 ? rawOffset : 0;
         const seek = () => {
           try {
             slot.audio.currentTime = offset;

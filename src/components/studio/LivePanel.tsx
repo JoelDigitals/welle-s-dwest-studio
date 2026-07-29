@@ -1,20 +1,27 @@
 import { useRef, useState } from "react";
-import { GripVertical, Play, Radio, SkipForward, Trash2, Zap } from "lucide-react";
+import {
+  ChevronDown,
+  GripVertical,
+  Newspaper,
+  Play,
+  Radio,
+  SkipForward,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HOSTS } from "@/lib/radio-config";
 import { SLOGANS } from "@/lib/radio-data";
 import { speakDuration, trafficText } from "@/lib/planner";
-import type { PlanItem, TrafficFeedItem } from "@/lib/broadcast-types";
+import { useScheduledShows } from "@/lib/use-scheduled-shows";
+import { useMyRecordings } from "@/lib/use-my-recordings";
+import { useAuth } from "@/lib/use-auth";
+import type { PlanItem, TrafficFeedItem, NewsFeedItem } from "@/lib/broadcast-types";
 import type { MediaRecord } from "@/lib/media-db";
 import type { LiveQueueItemInput } from "@/lib/use-live-studio";
 
@@ -29,6 +36,7 @@ type Props = {
   skip: () => void;
   media: MediaRecord[];
   traffic: TrafficFeedItem[];
+  news: NewsFeedItem[];
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -41,6 +49,7 @@ const KIND_LABEL: Record<string, string> = {
   weather: "Wetter",
   ad: "Werbung",
   slogan: "Slogan",
+  recording: "Aufnahme",
 };
 
 const time = (at: number) =>
@@ -62,13 +71,21 @@ function fromMedia(m: MediaRecord, kind: PlanItem["kind"] = "music"): LiveQueueI
 }
 
 export function LivePanel(props: Props) {
-  const [hostId, setHostId] = useState(HOSTS[0].id);
+  // Feste Stimme für die Notfall-KI-Ansage – bewusst keine Auswahl aus den KI-Moderator:innen im
+  // Livesendung-Tab, echte Livesendungen werden von echten Personen (Accounts) gehostet.
+  const host = HOSTS[0];
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
   const [preview, setPreview] = useState<string | null>(null);
   const dragUid = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const host = HOSTS.find((h) => h.id === hostId) ?? HOSTS[0];
+
+  const { user: me } = useAuth();
+  const { recordings } = useMyRecordings();
+  const schedule = useScheduledShows();
+  const [showTitle, setShowTitle] = useState("");
+  const [showAt, setShowAt] = useState("");
+  const [showMinutes, setShowMinutes] = useState("60");
 
   const music = props.media.filter(
     (m) =>
@@ -78,7 +95,11 @@ export function LivePanel(props: Props) {
   const jingles = props.media.filter((m) => m.kind === "jingle");
   const sloganMedia = props.media.filter((m) => m.kind === "slogan");
 
-  const speakItem = (value: string, title: string, kind: PlanItem["kind"] = "moderation"): LiveQueueItemInput => ({
+  const speakItem = (
+    value: string,
+    title: string,
+    kind: PlanItem["kind"] = "moderation",
+  ): LiveQueueItemInput => ({
     kind,
     title,
     subtitle: `${host.name} · KI-Stimme`,
@@ -96,6 +117,19 @@ export function LivePanel(props: Props) {
       "traffic",
     );
 
+  const newsNow = () => {
+    const top = props.news.slice(0, 3);
+    const brief = top.map((n) => `${n.headline}. ${n.body}`).join(" ");
+    return {
+      kind: "news" as const,
+      title: "Nachrichten (manuell)",
+      subtitle: "Aktuelle Meldungen",
+      text: brief || "Aktuell liegen keine neuen Meldungen vor.",
+      voice: host.voice,
+      duration: speakDuration(brief || " "),
+    };
+  };
+
   const previewMedia = async (m: MediaRecord) => {
     setPreview(m.id);
     try {
@@ -112,26 +146,51 @@ export function LivePanel(props: Props) {
     }
   };
 
+  const createShow = async () => {
+    if (!showTitle.trim() || !showAt || !me) return;
+    const startAt = new Date(showAt).getTime();
+    if (!Number.isFinite(startAt)) return;
+    const ok = await schedule.create({
+      title: showTitle.trim(),
+      hostId: me.userId,
+      hostName: me.displayName,
+      startAt,
+      minutes: Number(showMinutes) || 60,
+    });
+    if (ok) {
+      setShowTitle("");
+      setShowAt("");
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Kopfzeile: Live-Schalter */}
-      <section className="panel flex flex-wrap items-center justify-between gap-3 p-4">
-        <div className="flex items-center gap-3">
-          <h3 className="display text-xl">Livestudio</h3>
+      {/* On-Air-Leiste: der Hauptregler des Studios */}
+      <section className="panel flex flex-wrap items-center justify-between gap-3 p-4 md:p-5">
+        <div className="flex flex-wrap items-center gap-3">
           <span
-            className={`rounded-full border px-3 py-1 text-xs uppercase tracking-widest ${
-              props.liveMode ? "border-signal text-signal" : "border-border text-muted-foreground"
+            className={`onair-badge inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-bold tracking-widest ${
+              props.liveMode ? "bg-onair text-destructive-foreground" : "bg-muted text-muted-foreground"
             }`}
           >
-            {props.liveMode ? "Live – manuell" : "Autopilot sendet"}
+            <Radio className="size-4" /> {props.liveMode ? "ON AIR" : "AUTOPILOT"}
           </span>
+          <div>
+            <h3 className="display text-xl leading-none">Livestudio</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {props.liveMode
+                ? (props.queue[0]?.title ?? "Warteschlange leer")
+                : props.queue.length
+                  ? `${props.queue.length} Elemente vorbereitet – noch nicht on air`
+                  : "Autopilot sendet – noch nichts vorbereitet"}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => props.skip()}>
             <SkipForward className="size-4" /> Nächstes
           </Button>
           <div className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5">
-            <Radio className="size-4 text-primary" />
             <span className="text-xs uppercase tracking-widest">Livesendung</span>
             <Switch checked={props.liveMode} onCheckedChange={props.setLiveMode} />
           </div>
@@ -140,44 +199,46 @@ export function LivePanel(props: Props) {
 
       {!props.liveMode && (
         <p className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
-          Der Autopilot sendet gerade. Schalte "Livesendung" ein, um selbst zu übernehmen – die
-          Sendung ist dann erstmal leer, du ziehst Musik und Ansagen manuell rein.
+          Der Autopilot sendet gerade – du kannst deine Livesendung trotzdem schon jetzt komplett
+          vorbereiten (Reihenfolge unten bauen, Musik/Aufnahmen reinziehen). Schalte "Livesendung"
+          ein, sobald es losgehen soll, oder plane einen Sendetermin – dann übernimmt die Engine
+          automatisch.
         </p>
       )}
       {props.liveMode && props.queue.length === 0 && (
         <p className="rounded-lg border border-signal/40 bg-signal/10 p-3 text-sm">
           Live-Modus aktiv, aber die Warteschlange ist leer – es sendet gerade nichts. Zieh unten
-          Musik rein oder sende eine Ansage.
+          Musik, eine Aufnahme oder ein Jingle rein.
         </p>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        {/* Warteschlange mit Drag & Drop */}
-        <section className="panel space-y-3 p-5 xl:col-span-2">
+      <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+        {/* Running Order */}
+        <section className="panel space-y-3 p-5">
           <div className="flex items-center justify-between">
             <h4 className="display text-lg">
-              {props.liveMode ? "Live-Warteschlange (sendet)" : "Vorschau der Autopilot-Sendung"}
+              Live-Warteschlange {props.liveMode ? "(sendet)" : "(vorbereitet)"}
             </h4>
-            <span className="text-xs text-muted-foreground">
-              {props.liveMode ? "Elemente ziehen zum Umsortieren" : "Nur lesbar im Autopilot"}
-            </span>
+            <span className="text-xs text-muted-foreground">Elemente ziehen zum Umsortieren</span>
           </div>
           <ul className="space-y-1.5">
             {props.queue.slice(0, 20).map((item, i) => (
               <li
                 key={item.uid}
-                draggable={props.liveMode && i > 0}
+                draggable={i > 0}
                 onDragStart={() => (dragUid.current = item.uid)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => {
-                  if (props.liveMode && dragUid.current) props.reorder(dragUid.current, item.uid);
+                  if (dragUid.current) props.reorder(dragUid.current, item.uid);
                   dragUid.current = null;
                 }}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-                  i === 0 ? "border-signal bg-signal/10" : "border-border bg-secondary/40"
-                } ${props.liveMode && i > 0 ? "cursor-grab" : ""}`}
+                className={`flex items-center gap-2 rounded-lg border px-3 ${
+                  i === 0
+                    ? "border-signal bg-signal/10 py-3"
+                    : "border-border bg-secondary/40 py-2"
+                } ${i > 0 ? "cursor-grab" : ""}`}
               >
-                {props.liveMode && <GripVertical className="size-4 shrink-0 text-muted-foreground" />}
+                {i > 0 && <GripVertical className="size-4 shrink-0 text-muted-foreground" />}
                 <span className="w-12 shrink-0 text-xs tabular-nums text-muted-foreground">
                   {time(item.plannedAt)}
                 </span>
@@ -185,7 +246,11 @@ export function LivePanel(props: Props) {
                   {KIND_LABEL[item.kind] ?? item.kind}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{item.title}</span>
+                  <span
+                    className={`block truncate font-semibold ${i === 0 ? "text-base" : "text-sm"}`}
+                  >
+                    {item.title}
+                  </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {item.subtitle}
                   </span>
@@ -194,7 +259,7 @@ export function LivePanel(props: Props) {
                   {Math.floor(item.duration / 60)}:
                   {String(Math.round(item.duration % 60)).padStart(2, "0")}
                 </span>
-                {props.liveMode && i > 0 && (
+                {i > 0 && (
                   <Button
                     size="icon"
                     variant="ghost"
@@ -212,151 +277,305 @@ export function LivePanel(props: Props) {
           </ul>
         </section>
 
-        {/* Slogan-Launchpad */}
+        {/* Cart-Wall */}
         <section className="panel space-y-3 p-5">
-          <h4 className="display text-lg">Slogan-Launchpad</h4>
-          <p className="text-xs text-muted-foreground">
-            Play = vorhören im Studio. Klick auf die Kachel = live auf Sendung (nur im Live-Modus).
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {sloganMedia.map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1"
+          <h4 className="display text-lg">Cart-Wall</h4>
+          <Tabs defaultValue="jingles">
+            <TabsList className="w-full">
+              <TabsTrigger value="jingles" className="flex-1">
+                Jingles & Slogans
+              </TabsTrigger>
+              <TabsTrigger value="recordings" className="flex-1">
+                Aufnahmen
+              </TabsTrigger>
+              <TabsTrigger value="music" className="flex-1">
+                Musik
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="jingles" className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Play = vorhören im Studio. Klick auf die Kachel = sofort in die Live-Warteschlange
+                (läuft erst, sobald "Livesendung" an ist).
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {jingles.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1"
+                  >
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`${m.title} vorhören`}
+                      disabled={preview === m.id}
+                      onClick={() => void previewMedia(m)}
+                    >
+                      <Play className="size-4" />
+                    </Button>
+                    <button
+                      className="min-w-0 flex-1 truncate px-1 text-left text-xs disabled:opacity-40"
+                      onClick={() => props.playNow(fromMedia(m, "jingle"))}
+                    >
+                      {m.title}
+                    </button>
+                  </div>
+                ))}
+                {sloganMedia.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1"
+                  >
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`${m.title} vorhören`}
+                      disabled={preview === m.id}
+                      onClick={() => void previewMedia(m)}
+                    >
+                      <Play className="size-4" />
+                    </Button>
+                    <button
+                      className="min-w-0 flex-1 truncate px-1 text-left text-xs disabled:opacity-40"
+                      onClick={() => props.playNow(fromMedia(m, "slogan"))}
+                    >
+                      {m.title}
+                    </button>
+                  </div>
+                ))}
+                {SLOGANS.slice(0, 6).map((s, i) => (
+                  <div key={s} className="flex items-center gap-1 rounded-lg border border-border p-1">
+                    <button
+                      className="min-w-0 flex-1 truncate px-1 text-left text-xs disabled:opacity-40"
+                      onClick={() => props.playNow(speakItem(s, `Slogan ${i + 1}`, "slogan"))}
+                    >
+                      {s}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!jingles.length}
+                onClick={() => jingles[0] && props.playNow(fromMedia(jingles[0], "jingle"))}
               >
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={`${m.title} vorhören`}
-                  disabled={preview === m.id}
-                  onClick={() => void previewMedia(m)}
-                >
-                  <Play className="size-4" />
-                </Button>
-                <button
-                  className="min-w-0 flex-1 truncate px-1 text-left text-xs disabled:opacity-40"
-                  disabled={!props.liveMode}
-                  onClick={() => props.playNow(fromMedia(m, "slogan"))}
-                >
-                  {m.title}
-                </button>
+                <Zap className="size-4" /> Jingle jetzt
+              </Button>
+            </TabsContent>
+
+            <TabsContent value="recordings" className="space-y-1.5">
+              {recordings.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Keine Aufnahmen in der Bibliothek – im Tab „Bibliothek" als „Aufnahme"
+                  hochladen.
+                </p>
+              )}
+              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                {recordings.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2"
+                  >
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`${m.title} vorhören`}
+                      disabled={preview === m.id}
+                      onClick={() => void previewMedia(m)}
+                    >
+                      <Play className="size-4" />
+                    </Button>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{m.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {m.artist || m.category}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => props.cueNext(fromMedia(m, "recording"))}
+                    >
+                      Cue
+                    </Button>
+                    <Button size="sm" onClick={() => props.playNow(fromMedia(m, "recording"))}>
+                      Play
+                    </Button>
+                  </div>
+                ))}
               </div>
-            ))}
-            {SLOGANS.slice(0, 6).map((s, i) => (
-              <div key={s} className="flex items-center gap-1 rounded-lg border border-border p-1">
-                <button
-                  className="min-w-0 flex-1 truncate px-1 text-left text-xs disabled:opacity-40"
-                  disabled={!props.liveMode}
-                  onClick={() => props.playNow(speakItem(s, `Slogan ${i + 1}`, "slogan"))}
-                >
-                  {s}
-                </button>
+            </TabsContent>
+
+            <TabsContent value="music" className="space-y-3">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Musik durchsuchen…"
+              />
+              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                {music.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Keine Musik in der Bibliothek – im Tab „Bibliothek" hochladen.
+                  </p>
+                )}
+                {music.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{t.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {t.artist} · {t.category}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => props.cueNext(fromMedia(t))}>
+                      Cue
+                    </Button>
+                    <Button size="sm" onClick={() => props.playNow(fromMedia(t))}>
+                      Play
+                    </Button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!jingles.length || !props.liveMode}
-            onClick={() => jingles[0] && props.playNow(fromMedia(jingles[0], "jingle"))}
-          >
-            <Zap className="size-4" /> Jingle jetzt
-          </Button>
+            </TabsContent>
+          </Tabs>
         </section>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Moderation */}
+        {/* Nachrichten jetzt – die einzige weiterhin KI-vertonte Ansage im Live-Workflow */}
         <section className="panel space-y-3 p-5">
-          <h4 className="display text-lg">Moderation (KI-Stimme)</h4>
-          <Select value={hostId} onValueChange={setHostId}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {HOSTS.map((h) => (
-                <SelectItem key={h.id} value={h.id}>
-                  {h.name} — {h.humor}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Textarea
-            rows={4}
-            placeholder="Sprechtext für die KI-Stimme…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
+          <h4 className="display flex items-center gap-2 text-lg">
+            <Newspaper className="size-4" /> Nachrichten jetzt
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            Liest die {Math.min(3, props.news.length)} aktuellsten Meldungen mit KI-Stimme vor –
+            einzige KI-Ansage, die für echte Livesendungen vorgesehen ist.
+          </p>
           <div className="flex gap-2">
-            <Button
-              disabled={!text.trim() || !props.liveMode}
-              onClick={() => props.playNow(speakItem(text, `Moderation — ${host.name}`))}
-            >
+            <Button disabled={!props.news.length} onClick={() => props.playNow(newsNow())}>
               Sofort senden
             </Button>
             <Button
               variant="secondary"
-              disabled={!text.trim() || !props.liveMode}
-              onClick={() => props.cueNext(speakItem(text, `Moderation — ${host.name}`))}
+              disabled={!props.news.length}
+              onClick={() => props.cueNext(newsNow())}
             >
               Als Nächstes
             </Button>
-            <Button
-              variant="ghost"
-              disabled={!props.liveMode}
-              onClick={() => props.playNow(trafficNow())}
-            >
-              Verkehr jetzt
-            </Button>
           </div>
-          {!props.liveMode && (
-            <p className="text-xs text-muted-foreground">
-              Schalte oben "Livesendung" ein, um Ansagen tatsächlich zu senden.
-            </p>
-          )}
         </section>
 
-        {/* Musik */}
-        <section className="panel space-y-3 p-5">
-          <h4 className="display text-lg">Musik</h4>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Musik durchsuchen…"
-          />
-          <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
-            {music.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Keine Musik in der Bibliothek – im Tab „Bibliothek" hochladen.
+        {/* Notfall-KI-Moderation – bewusst eingeklappt und aus dem Hauptfluss genommen */}
+        <Collapsible>
+          <section className="panel space-y-3 p-5">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between text-left">
+                <h4 className="display text-lg text-muted-foreground">Nur für Notfälle</h4>
+                <ChevronDown className="size-4 text-muted-foreground" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Für echte Livesendungen bitte keine KI-Texte verwenden – nur Musik, Jingles,
+                Aufnahmen und Nachrichten. Diese freie KI-Ansage ist nur für Notfälle gedacht
+                (z. B. eine technische Störungsmeldung, wenn niemand live spricht).
               </p>
-            )}
-            {music.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{t.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {t.artist} · {t.category}
-                  </p>
-                </div>
+              <Textarea
+                rows={3}
+                placeholder="Sprechtext für die KI-Stimme…"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+              />
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  variant="ghost"
-                  disabled={!props.liveMode}
-                  onClick={() => props.cueNext(fromMedia(t))}
+                  disabled={!text.trim()}
+                  onClick={() => props.playNow(speakItem(text, `Moderation — ${host.name}`))}
                 >
-                  Cue
+                  Sofort senden
                 </Button>
-                <Button size="sm" disabled={!props.liveMode} onClick={() => props.playNow(fromMedia(t))}>
-                  Play
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!text.trim()}
+                  onClick={() => props.cueNext(speakItem(text, `Moderation — ${host.name}`))}
+                >
+                  Als Nächstes
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => props.playNow(trafficNow())}>
+                  Verkehr jetzt
                 </Button>
               </div>
-            ))}
-          </div>
-        </section>
+            </CollapsibleContent>
+          </section>
+        </Collapsible>
       </div>
+
+      {/* Sendeplan */}
+      <section className="panel space-y-3 p-5">
+        <h4 className="display text-lg">Sendeplan</h4>
+        <p className="text-xs text-muted-foreground">
+          Geplante Sendetermine schalten automatisch in den Livestudio-Modus und am Ende wieder
+          zurück in den Autopiloten. Bau den Rundown vorher schon über Cart-Wall/Musik oben auf.
+          Gastgeber:in bist du selbst – {me?.displayName ?? "…"}.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-[1.3fr_1fr_0.7fr_auto]">
+          <Input
+            value={showTitle}
+            onChange={(e) => setShowTitle(e.target.value)}
+            placeholder="Titel der Sendung"
+          />
+          <Input type="datetime-local" value={showAt} onChange={(e) => setShowAt(e.target.value)} />
+          <Input
+            type="number"
+            min={5}
+            value={showMinutes}
+            onChange={(e) => setShowMinutes(e.target.value)}
+            placeholder="Min."
+          />
+          <Button onClick={() => void createShow()} disabled={!showTitle.trim() || !showAt || !me}>
+            Anlegen
+          </Button>
+        </div>
+        {schedule.error && <p className="text-sm text-destructive">{schedule.error}</p>}
+        <ul className="space-y-1.5">
+          {schedule.shows.map((s) => (
+            <li
+              key={s.id}
+              className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2"
+            >
+              <span className="w-36 shrink-0 text-xs tabular-nums text-muted-foreground">
+                {new Date(s.startAt).toLocaleString("de-DE", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{s.title}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {s.hostName} · {s.minutes} Min.
+                </span>
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Sendetermin löschen"
+                onClick={() => void schedule.remove(s.id)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </li>
+          ))}
+          {schedule.shows.length === 0 && (
+            <li className="text-sm text-muted-foreground">Keine Sendetermine geplant.</li>
+          )}
+        </ul>
+      </section>
     </div>
   );
 }

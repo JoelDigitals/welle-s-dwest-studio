@@ -19,6 +19,7 @@ const KINDS: Array<{ id: MediaKind; label: string }> = [
   { id: "jingle", label: "Jingle" },
   { id: "slogan", label: "Slogan / Station-ID" },
   { id: "ad", label: "Werbung" },
+  { id: "recording", label: "Aufnahme (vorab aufgezeichnet)" },
 ];
 
 const SLOTS: Array<{ id: NonNullable<MediaRecord["slot"]>; label: string }> = [

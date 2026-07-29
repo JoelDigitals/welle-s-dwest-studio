@@ -11,6 +11,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
+  Mic,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatClock } from "@/lib/radio-data";
@@ -26,6 +27,7 @@ const ICONS: Record<ItemKind, typeof Music> = {
   weather: CloudSun,
   showopener: Radio,
   slogan: Sparkles,
+  recording: Mic,
 };
 
 const clock = (ms: number) =>

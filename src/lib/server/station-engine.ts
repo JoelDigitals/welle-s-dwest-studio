@@ -5,6 +5,7 @@ import type {
   PlanItem,
   TrafficFeedItem,
   FreeTrack,
+  LiveSlot,
 } from "@/lib/broadcast-types";
 import { fetchNews } from "./fetch-news";
 import { fetchTraffic } from "./fetch-traffic";
@@ -18,11 +19,13 @@ import {
   tryGenerateStationId,
   tryHumanizeNews,
   tryGenerateCoHostReply,
+  tryHumanizeHandoff,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
+import { listScheduledShows } from "./scheduled-shows-store";
 
 /**
  * Autonome Sende-Engine: läuft dauerhaft im Server-Prozess, unabhängig davon, ob irgendwo ein
@@ -41,6 +44,7 @@ const NEWS_TTL_MS = 5 * 60_000;
 const TRAFFIC_TTL_MS = 3 * 60_000;
 const FREEMUSIC_TTL_MS = 60 * 60_000;
 const MEDIA_TTL_MS = 30_000;
+const SCHEDULED_SHOWS_TTL_MS = 30_000;
 
 /** duration ist die real gemessene Hördauer (aus den MP3-Frames) – nicht die grobe Planungsschätzung. */
 type AudioEntry = { buffer: Buffer; contentType: string; duration: number };
@@ -61,6 +65,15 @@ type EngineState = {
   traffic: { items: TrafficFeedItem[]; at: number };
   freeMusic: { items: FreeTrack[]; at: number };
   media: { items: MediaRecord[]; at: number };
+  /** Im Voraus geplante Sendetermine (Datum/Uhrzeit/Titel/Host) – die Engine schaltet zu ihrer
+   *  Startzeit automatisch in den Livestudio-Modus und am Ende automatisch wieder zurück. */
+  scheduledShows: { items: LiveSlot[]; at: number };
+  /** ID der geplanten Sendung, die den Livestudio-Modus GERADE automatisch scharf geschaltet hat
+   *  (nicht der Mensch manuell) – damit die Engine am Fensterende automatisch wieder ausschaltet. */
+  autoLiveShowId: string | null;
+  /** ID einer Sendung, die der Mensch bewusst vorzeitig beendet hat – verhindert, dass der
+   *  nächste Tick sie sofort wieder scharf schaltet, solange ihr Zeitfenster noch läuft. */
+  suppressedShowId: string | null;
   running: boolean;
   timer: ReturnType<typeof setInterval> | null;
   /** Live-Dauerstream (/live-stream): wer gerade zuhört, und wie weit im aktuellen
@@ -84,6 +97,9 @@ function getState(): EngineState {
     traffic: { items: [], at: 0 },
     freeMusic: { items: [], at: 0 },
     media: { items: [], at: 0 },
+    scheduledShows: { items: [], at: 0 },
+    autoLiveShowId: null,
+    suppressedShowId: null,
     running: false,
     timer: null,
     liveListeners: new Set(),
@@ -148,6 +164,15 @@ async function refreshFeeds(state: EngineState) {
         .catch(() => undefined),
     );
   }
+  if (now - state.scheduledShows.at > SCHEDULED_SHOWS_TTL_MS) {
+    jobs.push(
+      listScheduledShows()
+        .then((items) => {
+          state.scheduledShows = { items, at: now };
+        })
+        .catch(() => undefined),
+    );
+  }
   if (now - state.freeMusic.at > FREEMUSIC_TTL_MS || state.freeMusic.items.length === 0) {
     jobs.push(
       Promise.all(
@@ -172,7 +197,7 @@ function buildContext(state: EngineState): PlanContext {
     hotline: listHotlineReports(),
     freeMusic: state.freeMusic.items,
     adCampaigns: listApprovedAdCampaigns(),
-    liveSlots: [],
+    liveSlots: state.scheduledShows.items,
     approvalRequired: false,
   };
 }
@@ -229,13 +254,15 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
   const spokenText =
     item.kind === "moderation" && item.dialogueTopic
       ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
-      : item.kind === "moderation"
-      ? await tryHumanizeModeration(text, item.hostName)
-      : item.kind === "slogan"
-        ? await tryGenerateStationId(text)
-        : item.kind === "news"
-          ? await tryHumanizeNews(text)
-          : text;
+      : item.kind === "moderation" && item.handoff
+        ? await tryHumanizeHandoff(text)
+        : item.kind === "moderation"
+          ? await tryHumanizeModeration(text, item.hostName)
+          : item.kind === "slogan"
+            ? await tryGenerateStationId(text)
+            : item.kind === "news"
+              ? await tryHumanizeNews(text)
+              : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste
@@ -372,6 +399,33 @@ function insertFiller(state: EngineState, gapMs: number): boolean {
   return true;
 }
 
+/** Prüft, ob gerade eine im Voraus geplante Livesendung läuft, und schaltet die Engine
+ *  entsprechend automatisch in den Livestudio-Modus bzw. wieder zurück in den Autopiloten –
+ *  ohne dass jemand manuell den Schalter betätigen muss. Ein bewusst vorzeitig beendeter
+ *  Termin wird nicht sofort wieder scharf geschaltet (suppressedShowId), solange sein
+ *  Zeitfenster noch läuft. */
+function tickScheduledShows(state: EngineState) {
+  const now = Date.now();
+  const active = state.scheduledShows.items.find(
+    (s) => now >= s.startAt && now < s.startAt + s.minutes * 60_000,
+  );
+  if (active) {
+    if (state.suppressedShowId === active.id) return;
+    if (!state.liveMode) {
+      setLiveMode(true);
+      state.autoLiveShowId = active.id;
+    } else if (!state.autoLiveShowId) {
+      state.autoLiveShowId = active.id;
+    }
+  } else {
+    if (state.autoLiveShowId) {
+      setLiveMode(false);
+      state.autoLiveShowId = null;
+    }
+    state.suppressedShowId = null;
+  }
+}
+
 /** Autopilot-spezifisch: harte Zeitmarken vorziehen und den Sendeplan auffüllen. Läuft nie im
  *  Livestudio-Modus – dort gibt es weder Zeitmarken noch automatische Planung. */
 function tickAutopilotPlanning(state: EngineState) {
@@ -432,6 +486,8 @@ async function tick() {
   state.running = true;
   try {
     await refreshFeeds(state);
+
+    tickScheduledShows(state);
 
     if (!state.liveMode) {
       tickAutopilotPlanning(state);
@@ -565,6 +621,19 @@ export function setLiveMode(on: boolean) {
   if (!on) {
     state.plan = [];
   }
+}
+
+/** Wie setLiveMode, aber für den manuellen Schalter im Studio: wird eine automatisch gestartete
+ *  geplante Sendung von Hand vorzeitig beendet, merkt sich die Engine das (suppressedShowId),
+ *  damit der nächste Tick sie nicht sofort wieder scharf schaltet, solange ihr Zeitfenster
+ *  noch läuft. */
+export function setLiveModeManual(on: boolean) {
+  const state = getState();
+  if (!on && state.autoLiveShowId) {
+    state.suppressedShowId = state.autoLiveShowId;
+    state.autoLiveShowId = null;
+  }
+  setLiveMode(on);
 }
 
 export type LiveQueueInput = {

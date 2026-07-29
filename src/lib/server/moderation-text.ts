@@ -103,6 +103,8 @@ export async function tryGenerateStationId(fallback: string): Promise<string> {
 const NEWS_SYSTEM = `Du bist Nachrichtensprecher:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt).
 Du bekommst einen fertigen Nachrichtentext (Anmoderation mit Themenüberblick ODER die eigentlichen Meldungen). Verändere NIEMALS Fakten, Namen, Orte oder Zahlen – nur die Sprachform darf sich ändern.
 Wandle Schlagzeilen-artige, geschriebene Formulierungen (wie eine Zeitungsüberschrift) in natürliche, flüssig gesprochene Sätze um, so wie ein echter Nachrichtensprecher sie vorlesen würde – mit normaler Satzmelodie, nicht wie eine Aufzählung.
+JEDE einzelne Meldung muss ein vollständiger, grammatikalisch korrekter gesprochener Satz mit Subjekt und Verb sein – niemals ein bloßes Schlagzeilen-Fragment ohne Verb (z. B. nicht "Stromausfall in mehreren Stadtteilen", sondern "In mehreren Stadtteilen ist der Strom ausgefallen").
+Nenne die Region (Saarland, Rheinland-Pfalz, bundesweit, international) nicht bei jeder einzelnen Meldung erneut – nur wenn sich die Region gegenüber der vorherigen Meldung tatsächlich ändert, sonst wirkt es wie eine stur abgehakte Liste statt echtem Radio.
 Halte dich an die vorgegebene Reihenfolge und Anzahl der Meldungen, kürze nichts weg und füge nichts hinzu.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
@@ -115,6 +117,31 @@ export async function tryHumanizeNews(text: string): Promise<string> {
       user: text,
       temperature: 0.6,
       topP: 0.9,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
+/** Übergabe zwischen zwei Sendungen (Verabschiedung der auslaufenden Moderation + Vorstellung
+ *  der nächsten Sendung/Person): wie bei Nachrichten dürfen Namen, Uhrzeit und Sendungstitel
+ *  NIE verändert oder erfunden werden – nur die Formulierung darf variieren. Verhindert, dass
+ *  echte Übergabesätze ("das war's von mir, gleich übernimmt...") am Sendungsende komplett
+ *  fehlen bzw. immer wortgleich klingen. */
+const HANDOFF_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" und verabschiedest dich gerade am Ende deiner Sendung von den Hörer:innen, bevor die nächste Person übernimmt.
+Du bekommst einen Textbaustein mit den festen Fakten (dein Name, die nächste Sendung, die nächste Person, ggf. die Uhrzeit). Diese Fakten (Namen, Sendungstitel, Uhrzeiten) darfst du NIEMALS verändern oder weglassen – nur die Formulierung darf frei und jedes Mal neu klingen.
+Schreib einen kurzen, warmen Abschied (1 bis 3 Sätze): bedanke dich fürs Zuhören, sag, dass deine Zeit für heute vorbei ist, und kündige an, wer als Nächstes übernimmt.
+Gesprochene Sprache, wie ein echter Mensch am Mikrofon, keine Regieanweisungen, keine Emojis.`;
+
+/** Wie tryHumanizeNews, aber mit dem Übergabe-Prompt (Fakten fest, nur die Formulierung frei). */
+export async function tryHumanizeHandoff(text: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: HANDOFF_SYSTEM,
+      user: text,
+      temperature: 0.9,
+      topP: 0.95,
     });
     return rewritten.trim() || text;
   } catch {

@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { synthesizeSpeech } from "@/lib/server/tts-synthesize";
+import { requireAuth } from "@/lib/server/auth";
 
 export const Route = createFileRoute("/api/tts")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401 });
         let payload: { text?: unknown; voice?: unknown; style?: unknown };
         try {
           payload = await request.json();

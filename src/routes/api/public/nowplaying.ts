@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { startStationEngine } from "@/lib/server/station-engine";
+import { requireAuth } from "@/lib/server/auth";
 
 /**
  * Echtzeit-Status des Senders. Das Studio meldet per POST, was gerade läuft,
@@ -76,6 +77,8 @@ export const Route = createFileRoute("/api/public/nowplaying")({
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
       GET: async () => Response.json(globalStore.__nowPlaying ?? empty, { headers: cors }),
       POST: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const body = (await request.json().catch(() => null)) as Partial<NowPlaying> | null;
         if (!body)
           return Response.json({ error: "Ungültige Daten" }, { status: 400, headers: cors });

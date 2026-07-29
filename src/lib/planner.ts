@@ -8,6 +8,7 @@ import {
   weatherExpertFor,
   correspondentFor,
   type Host,
+  type Show,
   type Correspondent,
 } from "./radio-config";
 import { SLOGANS } from "./radio-data";
@@ -66,8 +67,11 @@ const endWithDot = (v: string) => (/[.!?]$/.test(v) ? v : `${v}.`);
 
 /* ---------------------------------------------------------------- Nachrichten */
 
-/** Ortsangabe im Sprechtext – „Welt“ wird nie angesagt. */
-function regionLead(region: string, i: number) {
+/** Ortsangabe im Sprechtext – nur beim Wechsel in eine andere Region einmal angesagt, nicht vor
+ *  jeder einzelnen Meldung (klingt sonst wie eine stur abgehakte Liste statt echtem Radio).
+ *  „Welt“ wird nie wörtlich angesagt. */
+function regionLead(region: string, prevRegion: string | undefined, i: number) {
+  if (region === prevRegion) return "";
   if (region === "Saarland") return pick(["Im Saarland", "Aus dem Saarland", "Saarland"], i);
   if (region === "Rheinland-Pfalz")
     return pick(["In Rheinland-Pfalz", "Aus Rheinland-Pfalz", "Rheinland-Pfalz"], i);
@@ -137,8 +141,10 @@ function newsIntroText(host: Host, at: number, stories: Story[], mode: "full" | 
 /** Ausführlicher Nachrichtenblock. */
 function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: number) {
   const list = stories.slice(0, mode === "full" ? 8 : 10);
+  let prevRegion: string | undefined;
   const parts = list.map((s, i) => {
-    const lead = regionLead(s.region, i);
+    const lead = regionLead(s.region, prevRegion, i);
+    prevRegion = s.region;
     const head = endWithDot(s.headline);
     if (mode === "short") return `${lead ? `${lead}: ` : ""}${head}`;
     const body = s.body ? ` ${endWithDot(s.body)}` : "";
@@ -971,6 +977,24 @@ function musicPool(ctx: PlanContext): MusicSource[] {
   return [...shuffle(uploaded), ...shuffle(free)];
 }
 
+/** Übergabe zwischen zwei Sendungen: die auslaufende Person verabschiedet sich und kündigt an,
+ *  wer als Nächstes übernimmt – vorher endete eine Sendung einfach kommentarlos, die neue begann
+ *  kalt mit ihrem eigenen Opener. Mehrere Varianten mit echten Fakten (Name, Uhrzeit, Sendung);
+ *  die eigentliche sprachliche Auffrischung übernimmt zusätzlich tryHumanizeHandoff() bei der
+ *  Sprachausgabe (siehe station-engine.ts – dort bleiben Namen/Uhrzeiten aber garantiert unverändert). */
+function showHandoffText(prevHost: Host, nextShow: Show, nextHost: Host, at: number): string {
+  const time = spokenTime(at);
+  const variants = [
+    `Das war's von mir für heute – vielen Dank fürs Zuhören! Ab ${time} übernimmt gleich ${nextHost.name} für Sie ${nextShow.title}.`,
+    `Damit ist meine Zeit am Mikrofon für heute vorbei. Bleiben Sie dran, denn ab ${time} geht es weiter mit ${nextHost.name} bei ${nextShow.title}.`,
+    `Ich, ${prevHost.name}, verabschiede mich für heute – danke, dass Sie eingeschaltet hatten. Gleich, ab ${time}, übernimmt ${nextHost.name} für Sie mit ${nextShow.title}.`,
+    `So, das war's für heute von mir. Weiter geht's ab ${time} mit ${nextHost.name} und ${nextShow.title} – bleiben Sie uns treu.`,
+    `Meine Schicht ist für heute vorbei, ich sage tschüss. Ab ${time} übernimmt ${nextHost.name} das Mikrofon bei ${nextShow.title}.`,
+    `${prevHost.name} sagt für heute Tschüss – ab ${time} sind Sie bei ${nextHost.name} und ${nextShow.title} in guten Händen.`,
+  ];
+  return pick(variants, Math.round(at / 60_000));
+}
+
 /**
  * Baut einen Sendeplan über mehrere Stunden.
  * Nachrichten laufen sekundengenau: Anmoderation mit Themenüberblick, Trenner,
@@ -1007,6 +1031,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
   let musicIndex = 0;
   let generalIndex = 0;
   let lastSong: string | undefined;
+  /** Show/Host der vorigen Stunde – für die Übergabe an die nächste Sendung. */
+  let prevShow: Show | undefined;
+  let prevHost: Host | undefined;
 
   for (let h = 0; h < hourCount; h++) {
     const hourStart = new Date(start.getTime() + h * 3600_000);
@@ -1398,6 +1425,15 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
 
     // --- Feste Zeitmarke: Nachrichten zur vollen Stunde ---
     if (cursor <= hourStart.getTime()) {
+      if (isShowStart && prevShow && prevHost) {
+        const handoff = showHandoffText(prevHost, show, host, hourStart.getTime());
+        speak("moderation", `Übergabe — ${prevHost.name}`, `An ${host.name}`, handoff, {
+          voice: prevHost.voice,
+          hostId: prevHost.id,
+          hostName: prevHost.name,
+          handoff: true,
+        });
+      }
       pushJingle();
       pushNewsBlock("full", hourStart.getTime());
       if (isShowStart) {
@@ -1454,6 +1490,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     fillUntil(halfPast);
     pushNewsBlock("short", halfPast);
     fillUntil(hourEnd);
+
+    prevShow = show;
+    prevHost = host;
   }
 
   return items.sort((a, b) => a.plannedAt - b.plannedAt);

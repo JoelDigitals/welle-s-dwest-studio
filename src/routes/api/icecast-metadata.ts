@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
+import { requireAuth } from "@/lib/server/auth";
 
 /**
  * Sendet den aktuellen Titel als Metadaten an einen Icecast-/SHOUTcast-Server
@@ -17,6 +18,8 @@ export const Route = createFileRoute("/api/icecast-metadata")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const authUser = await requireAuth();
+        if (!authUser) return Response.json({ error: "Nicht angemeldet" }, { status: 401 });
         const parsed = schema.safeParse(await request.json().catch(() => null));
         if (!parsed.success) {
           return Response.json({ error: "Icecast-Zugangsdaten unvollständig." }, { status: 400 });

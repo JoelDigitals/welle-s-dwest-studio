@@ -7,6 +7,7 @@ import {
   getLiveQueue,
   type LiveQueueInput,
 } from "@/lib/server/station-engine";
+import { requireAuth } from "@/lib/server/auth";
 
 startStationEngine();
 
@@ -26,8 +27,14 @@ export const Route = createFileRoute("/api/live-queue")({
   server: {
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
-      GET: async () => Response.json(getLiveQueue(), { headers: cors }),
+      GET: async () => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
+        return Response.json(getLiveQueue(), { headers: cors });
+      },
       POST: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const body = (await request.json().catch(() => null)) as {
           item?: LiveQueueInput;
           playNow?: boolean;
@@ -43,6 +50,8 @@ export const Route = createFileRoute("/api/live-queue")({
         return Response.json({ ok: true, item: added }, { headers: cors });
       },
       PATCH: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const body = (await request.json().catch(() => null)) as {
           fromUid?: string;
           toUid?: string;
@@ -57,6 +66,8 @@ export const Route = createFileRoute("/api/live-queue")({
         return Response.json({ ok: true }, { headers: cors });
       },
       DELETE: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const uid = new URL(request.url).searchParams.get("uid");
         if (!uid) return Response.json({ error: "uid fehlt" }, { status: 400, headers: cors });
         removeFromLiveQueue(uid);

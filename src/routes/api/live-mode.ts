@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getLiveMode, setLiveMode, startStationEngine } from "@/lib/server/station-engine";
+import { getLiveMode, setLiveModeManual, startStationEngine } from "@/lib/server/station-engine";
+import { requireAuth } from "@/lib/server/auth";
 
 startStationEngine();
 
@@ -21,11 +22,13 @@ export const Route = createFileRoute("/api/live-mode")({
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
       GET: async () => Response.json({ live: getLiveMode() }, { headers: cors }),
       POST: async ({ request }) => {
+        const user = await requireAuth();
+        if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401, headers: cors });
         const body = (await request.json().catch(() => null)) as { live?: boolean } | null;
         if (typeof body?.live !== "boolean") {
           return Response.json({ error: "live (boolean) fehlt" }, { status: 400, headers: cors });
         }
-        setLiveMode(body.live);
+        setLiveModeManual(body.live);
         return Response.json({ ok: true, live: getLiveMode() }, { headers: cors });
       },
     },

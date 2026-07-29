@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { generateText, AiError } from "@/lib/ai-text";
+import { requireAuth } from "@/lib/server/auth";
 
 type Body = {
   headlines?: Array<{ id: string; region: string; headline: string; body: string }>;
@@ -20,6 +21,8 @@ export const Route = createFileRoute("/api/newsroom")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const authUser = await requireAuth();
+        if (!authUser) return Response.json({ error: "Nicht angemeldet" }, { status: 401 });
         let body: Body;
         try {
           body = (await request.json()) as Body;

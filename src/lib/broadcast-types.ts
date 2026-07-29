@@ -9,7 +9,8 @@ export type ItemKind =
   | "traffic"
   | "weather"
   | "ad"
-  | "slogan";
+  | "slogan"
+  | "recording";
 
 export type PrepStatus = "idle" | "preparing" | "ready" | "error";
 
@@ -58,6 +59,9 @@ export type PlanItem = {
    *  Thema, über das die Hauptmoderation gerade gesprochen hat – für ein echtes, themenbezogenes
    *  Gespräch statt einer beliebigen, austauschbaren Bemerkung. */
   dialogueTopic?: string;
+  /** Markiert eine Sendungs-Übergabe (Verabschiedung + Vorstellung der nächsten Sendung) – wird
+   *  faktentreu umformuliert (Namen/Uhrzeiten fest), nicht frei wie normale Moderation. */
+  handoff?: boolean;
   error?: string;
   /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
   audioUrl?: string;
