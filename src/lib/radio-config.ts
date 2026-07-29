@@ -101,7 +101,7 @@ export const NEWS_ANCHORS: Host[] = [
   {
     id: "na2",
     name: "Nadine Krebs",
-    voice: "ballad",
+    voice: "sage",
     persona: "Nachrichtenredakteurin, klar, ruhiges Tempo.",
     humor: "sachlich",
   },
@@ -170,7 +170,7 @@ export const CORRESPONDENTS: Correspondent[] = [
     id: "co5",
     name: "Marc Dubois",
     city: "Brüssel",
-    voice: "coral",
+    voice: "ballad",
     persona: "EU-Korrespondent, erklärt Brüssel verständlich.",
     humor: "warm",
   },

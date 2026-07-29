@@ -1,5 +1,5 @@
 /** Wiederverwendbare Nachrichten-Feed-Logik – vom Route-Handler und von der Server-Engine genutzt. */
-type Region = "Saarland" | "Rheinland-Pfalz" | "Welt";
+type Region = "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
 
 type Feed = { region: Region; url: string; source: string };
 
@@ -17,8 +17,26 @@ const FEEDS: Feed[] = [
     url: "https://www.rheinpfalz.de/rss/feed/rheinpfalz-startseite",
     source: "RP",
   },
-  { region: "Welt", url: "https://www.tagesschau.de/xml/rss2/", source: "tagesschau" },
+  // Eigene Inland-/Ausland-Feeds statt des gemischten Haupt-Feeds, damit "Deutschland" und "Welt"
+  // wirklich getrennte Rubriken sind statt beides unter "Welt" zusammenzuwerfen (URLs gegen den
+  // echten Server geprüft, da tagesschau.de die alten "xml/rss2_inland"-Pfade nicht mehr bedient).
+  {
+    region: "Deutschland",
+    url: "https://www.tagesschau.de/inland/index~rss2.xml",
+    source: "tagesschau-inland",
+  },
+  {
+    region: "Welt",
+    url: "https://www.tagesschau.de/ausland/index~rss2.xml",
+    source: "tagesschau-ausland",
+  },
 ];
+
+/** Blaulicht-/Verkehrsmeldungen (Unfälle, Staus, Sperrungen) zählen nicht als reguläre
+ *  Saarland/RLP-News – dafür gibt es den eigenen Verkehrsblock (fetch-traffic.ts), sonst kommt
+ *  derselbe Vorfall doppelt vor: einmal als "Nachricht", einmal als Verkehrsmeldung. */
+const TRAFFIC_LIKE =
+  /\bstau\b|\bunfall\b|verkehrsunfall|vollsperrung|teilsperrung|ampelausfall|blitzer|geblitzt|verkehrsbehinderung|auffahrunfall|a\d{1,3}\b.*(sperr|stau|unfall)/i;
 
 /** fetch mit Timeout – ein einzelner hängender Feed darf die Engine nie für immer blockieren. */
 async function fetchWithTimeout(url: string, ms: number, init?: RequestInit) {
@@ -95,7 +113,9 @@ export async function fetchNews(limit = 4): Promise<NewsResult> {
 
   return {
     fetchedAt: new Date().toISOString(),
-    items: results.flatMap((r) => r.items).filter((i) => i.headline),
+    items: results
+      .flatMap((r) => r.items)
+      .filter((i) => i.headline && !TRAFFIC_LIKE.test(`${i.headline} ${i.body}`)),
     errors: results
       .filter((r): r is typeof r & { error: string } => Boolean(r.error))
       .map((r) => ({ source: r.feed.source, error: r.error })),

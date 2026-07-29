@@ -71,6 +71,8 @@ function regionLead(region: string, i: number) {
   if (region === "Saarland") return pick(["Im Saarland", "Aus dem Saarland", "Saarland"], i);
   if (region === "Rheinland-Pfalz")
     return pick(["In Rheinland-Pfalz", "Aus Rheinland-Pfalz", "Rheinland-Pfalz"], i);
+  if (region === "Deutschland")
+    return pick(["Bundesweit", "Aus Deutschland", "Deutschlandweit"], i);
   return "";
 }
 
@@ -82,12 +84,6 @@ const CONNECT = [
   "Und noch eine Meldung.",
 ];
 
-const CORRESPONDENT = [
-  "Mehr dazu hören Sie im Laufe des Tages von unserer Korrespondentin in Mainz.",
-  "Unser Korrespondent in Berlin verfolgt die Beratungen und meldet sich später noch einmal.",
-  "Wir bleiben an dem Thema dran und melden uns, sobald es Neues gibt.",
-];
-
 type Story = { region: string; headline: string; body: string; author?: string };
 
 function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
@@ -95,6 +91,7 @@ function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
   const chosen = [
     ...byRegion("Saarland").slice(0, limitPerRegion),
     ...byRegion("Rheinland-Pfalz").slice(0, limitPerRegion),
+    ...byRegion("Deutschland").slice(0, limitPerRegion),
     ...byRegion("Welt").slice(0, limitPerRegion),
   ].map((n) => ({ region: n.region, headline: clean(n.headline), body: clean(n.body) }));
   const reports = ctx.reports
@@ -145,10 +142,13 @@ function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: 
     const head = endWithDot(s.headline);
     if (mode === "short") return `${lead ? `${lead}: ` : ""}${head}`;
     const body = s.body ? ` ${endWithDot(s.body)}` : "";
-    const author = s.author ? ` Ein Bericht von ${s.author}.` : "";
-    const extra = i > 0 && i % 3 === 0 ? ` ${pick(CORRESPONDENT, i + at)}` : "";
+    // Kein Hinweis mehr auf einen Bericht/Korrespondent:in, der/die "gleich" oder "im Laufe des
+    // Tages" mehr dazu sagt - das war ein Versprechen ohne echten Inhalt danach (es ging direkt
+    // zur nächsten Meldung weiter). Echte Korrespondent:innen-Schalten laufen jetzt separat über
+    // pushCorrespondent im Sendeplan, nicht als Ankündigung mitten in den Nachrichten.
+    const author = s.author ? ` Von ${s.author}.` : "";
     const connect = i === 0 ? "" : `${pick(CONNECT, i + at)} `;
-    return `${connect}${lead ? `${lead}: ` : ""}${head}${body}${author}${extra}`;
+    return `${connect}${lead ? `${lead}: ` : ""}${head}${body}${author}`;
   });
   const outro =
     mode === "full"

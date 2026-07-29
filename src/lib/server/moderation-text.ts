@@ -93,3 +93,70 @@ export async function tryGenerateStationId(fallback: string): Promise<string> {
     return fallback;
   }
 }
+
+/** Eigener Prompt für Nachrichten: anders als bei der Moderation dürfen hier NIEMALS Fakten
+ *  erfunden oder verändert werden – nur die sprachliche Form wird natürlicher. Das behebt das
+ *  "Schlagzeile wird zweimal vorgelesen"-Gefühl: die Themenübersicht in der Anmoderation und der
+ *  eigentliche Nachrichtentext dürfen sich nicht wortgleich wiederholen, und Schlagzeilen (die oft
+ *  wie Zeitungs-Überschriften formuliert sind) werden in echte, flüssig gesprochene Sätze
+ *  umgewandelt statt roh vorgelesen. */
+const NEWS_SYSTEM = `Du bist Nachrichtensprecher:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt).
+Du bekommst einen fertigen Nachrichtentext (Anmoderation mit Themenüberblick ODER die eigentlichen Meldungen). Verändere NIEMALS Fakten, Namen, Orte oder Zahlen – nur die Sprachform darf sich ändern.
+Wandle Schlagzeilen-artige, geschriebene Formulierungen (wie eine Zeitungsüberschrift) in natürliche, flüssig gesprochene Sätze um, so wie ein echter Nachrichtensprecher sie vorlesen würde – mit normaler Satzmelodie, nicht wie eine Aufzählung.
+Halte dich an die vorgegebene Reihenfolge und Anzahl der Meldungen, kürze nichts weg und füge nichts hinzu.
+Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
+
+/** Wie tryHumanizeModeration, aber mit dem faktentreuen Nachrichten-Prompt statt dem freien
+ *  Moderations-Prompt (der bewusst neue Inhalte erfinden darf – bei Nachrichten wäre das falsch). */
+export async function tryHumanizeNews(text: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: NEWS_SYSTEM,
+      user: text,
+      temperature: 0.6,
+      topP: 0.9,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
+const NEWS_RANK_SYSTEM = `Du bist Nachrichtenredakteur:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt).
+Du bekommst eine Liste von Nachrichten-Kandidaten im Format "ID|Region|Schlagzeile", eine pro Zeile.
+Sortiere INNERHALB jeder Region die IDs nach journalistischer Wichtigkeit (wichtigste zuerst) – Kriterien: Tragweite, Aktualität, wie sehr es Hörer:innen der Region betrifft.
+Gib NUR ein JSON-Objekt zurück: {"order": ["id1", "id2", ...]} – alle IDs aus der Eingabe, jede genau einmal, regionsweise nach Wichtigkeit sortiert. Keine Erklärung, kein weiterer Text.`;
+
+/** Ordnet Nachrichten-Kandidaten nach journalistischer Wichtigkeit statt nur nach Feed-
+ *  Reihenfolge – newsStories() nimmt weiterhin einfach die ersten N pro Region, die sind dann
+ *  aber KI-priorisiert statt zufällig in Feed-Reihenfolge. Bei jedem Fehler (Timeout, ungültiges
+ *  JSON, kein Provider konfiguriert) bleibt die ursprüngliche Reihenfolge erhalten – nie ein
+ *  Absturz, nie Datenverlust. */
+export async function rankNewsByImportance<
+  T extends { id: string; region: string; headline: string },
+>(items: T[]): Promise<T[]> {
+  if (items.length <= 1) return items;
+  try {
+    const brief = items.map((n) => `${n.id}|${n.region}|${n.headline}`).join("\n");
+    const { text } = await generateText({
+      system: NEWS_RANK_SYSTEM,
+      user: brief,
+      temperature: 0.3,
+      json: true,
+    });
+    const parsed = JSON.parse(text) as { order?: unknown };
+    const order = Array.isArray(parsed.order) ? (parsed.order as unknown[]) : null;
+    if (!order || !order.length) return items;
+    const byId = new Map(items.map((n) => [n.id, n]));
+    const ranked = order
+      .map((id) => (typeof id === "string" ? byId.get(id) : undefined))
+      .filter((n): n is T => Boolean(n));
+    if (!ranked.length) return items;
+    // Alles, was die KI ausgelassen hat, hinten anhängen – nichts darf verloren gehen.
+    const seen = new Set(ranked.map((n) => n.id));
+    const missing = items.filter((n) => !seen.has(n.id));
+    return [...ranked, ...missing];
+  } catch {
+    return items;
+  }
+}

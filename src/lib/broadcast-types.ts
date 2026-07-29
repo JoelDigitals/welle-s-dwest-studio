@@ -63,7 +63,7 @@ export type PlanItem = {
 
 export type NewsFeedItem = {
   id: string;
-  region: "Saarland" | "Rheinland-Pfalz" | "Welt";
+  region: "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
   source: string;
   headline: string;
   body: string;

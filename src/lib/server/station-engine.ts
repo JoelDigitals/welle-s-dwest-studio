@@ -13,7 +13,12 @@ import { curateFreeMusic, FREE_MUSIC_QUERIES } from "@/lib/free-music-pool";
 import { listHotlineReports } from "./hotline-store";
 import { listApprovedAdCampaigns } from "./ad-campaigns-store";
 import { synthesizeSpeechMp3Only } from "./tts-synthesize";
-import { tryHumanizeModeration, tryGenerateStationId } from "./moderation-text";
+import {
+  tryHumanizeModeration,
+  tryGenerateStationId,
+  tryHumanizeNews,
+  rankNewsByImportance,
+} from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
@@ -97,8 +102,12 @@ async function refreshFeeds(state: EngineState) {
   if (now - state.news.at > NEWS_TTL_MS) {
     jobs.push(
       fetchNews(6)
-        .then((r) => {
-          state.news = { items: r.items, at: now };
+        .then(async (r) => {
+          // KI sortiert je Region nach Wichtigkeit statt nach zufälliger Feed-Reihenfolge –
+          // newsStories() nimmt weiterhin nur die ersten N pro Region, die sind jetzt aber
+          // priorisiert. Bei Fehlern/Timeout bleibt die ursprüngliche Reihenfolge erhalten.
+          const ranked = await rankNewsByImportance(r.items);
+          state.news = { items: ranked, at: now };
         })
         .catch(() => undefined),
     );
@@ -191,15 +200,19 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
   }
   const text = item.text?.trim();
   if (!text) return null;
-  // Sowohl Moderation als auch Senderkennungen werden frisch (um)formuliert statt eine feste
-  // Textvorlage 1:1 vorzulesen – Nachrichten/Verkehr/Wetter/Werbung bleiben unverändert (deren
-  // Inhalt ist entweder schon echt generiert oder darf inhaltlich nicht verändert werden).
+  // Moderation und Senderkennungen werden frei (um)formuliert (dürfen neue Formulierungen/Ideen
+  // einbringen). Nachrichten werden nur sprachlich geglättet (nie Fakten ändern) – vorher klangen
+  // Schlagzeilen roh vorgelesen wie eine Aufzählung statt wie ein echter Nachrichtensprecher.
+  // Verkehr/Wetter/Werbung bleiben unverändert (Wetter/Werbung sind schon eigene generierte
+  // Texte, Verkehr enthält sicherheitsrelevante Angaben, die exakt bleiben sollen).
   const spokenText =
     item.kind === "moderation"
       ? await tryHumanizeModeration(text, item.hostName)
       : item.kind === "slogan"
         ? await tryGenerateStationId(text)
-        : text;
+        : item.kind === "news"
+          ? await tryHumanizeNews(text)
+          : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste
@@ -287,6 +300,52 @@ function publishNowPlaying(state: EngineState) {
   };
 }
 
+/**
+ * Lückenfüller (freie Musik), wenn der Sendeplan eine harte Zeitmarke (Nachrichten zur vollen/
+ * halben Stunde) zu früh erreicht – vorher gab es dafür nur ein Vorziehen bei Verspätung, aber
+ * kein Zurückhalten bei Verfrühung. Wenn z. B. mehrere Elemente in Folge kürzer laufen als
+ * geplant (die tatsächlich gemessene Audiolänge weicht von der Schätzung ab), lief die Sendung
+ * der echten Uhrzeit immer weiter davon – bis die 13-Uhr-Nachrichten schon um 12:30 Uhr kamen.
+ * Wählt den Titel, dessen Dauer der Lücke am nächsten kommt (weder unnötig kurz zurückbleiben
+ * noch stark überschießen).
+ */
+function insertFiller(state: EngineState, gapMs: number): boolean {
+  const gapSeconds = gapMs / 1000;
+  const library = state.media.items
+    .filter((m) => m.kind === "music" && m.streamUrl)
+    .map((m) => ({
+      title: m.title,
+      artist: m.artist,
+      category: m.category,
+      duration: m.duration || 180,
+      streamUrl: m.streamUrl,
+      license: m.license,
+      source: m.source,
+    }));
+  const candidates = [...library, ...state.freeMusic.items];
+  if (!candidates.length) return false;
+  const fitting = candidates.filter((t) => t.duration <= gapSeconds + 30);
+  const pool = fitting.length ? fitting : candidates;
+  const track = pool.reduce((best, t) =>
+    Math.abs(t.duration - gapSeconds) < Math.abs(best.duration - gapSeconds) ? t : best,
+  );
+  const filler: PlanItem = {
+    uid: `filler-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: "music",
+    title: track.title,
+    subtitle: `${track.artist || "Unbekannt"} · ${track.category}${track.license ? ` · ${track.license}` : ""}`,
+    duration: track.duration || 180,
+    plannedAt: Date.now(),
+    status: "idle",
+    streamUrl: track.streamUrl,
+    license: track.license,
+    source: track.source,
+    sponsor: null,
+  };
+  state.plan = [filler, ...state.plan];
+  return true;
+}
+
 async function tick() {
   const state = getState();
   if (state.running) return;
@@ -323,6 +382,13 @@ async function tick() {
       const current = state.plan[0];
       if (!current) break;
       if (state.currentStartedAt === null) {
+        // Harte Zeitmarke noch nicht erreicht (z. B. Nachrichten erst zur vollen Stunde) – nicht
+        // einfach jetzt schon starten, sondern erst noch Musik als Lückenfüller einschieben, bis
+        // die Zeit wirklich da ist (siehe insertFiller-Kommentar).
+        const gap = current.hardStart ? current.hardStart - Date.now() : 0;
+        if (gap > 60_000) {
+          if (insertFiller(state, gap)) continue;
+        }
         if (state.audioCache.has(current.uid)) {
           state.currentStartedAt = Date.now();
         }
