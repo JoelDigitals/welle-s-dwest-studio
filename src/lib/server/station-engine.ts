@@ -17,6 +17,7 @@ import {
   tryHumanizeModeration,
   tryGenerateStationId,
   tryHumanizeNews,
+  tryGenerateCoHostReply,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
@@ -47,6 +48,12 @@ type LiveListener = { controller: ReadableStreamDefaultController<Uint8Array> };
 
 type EngineState = {
   plan: PlanItem[];
+  /** Manuelle Warteschlange fürs Livestudio – nur relevant/aktiv, wenn liveMode true ist. Startet
+   *  immer leer; der Autopilot plant hier nichts hinein, das macht ausschließlich das Studio. */
+  liveQueue: PlanItem[];
+  /** Solange true: der Autopilot pausiert komplett, die Sendung spielt nur, was manuell in
+   *  liveQueue steht. Zurück zu false baut den Autopilot-Plan frisch neu auf. */
+  liveMode: boolean;
   currentStartedAt: number | null;
   audioCache: Map<string, AudioEntry>;
   preparing: Set<string>;
@@ -68,6 +75,8 @@ const g = globalThis as unknown as { __stationEngine?: EngineState };
 function getState(): EngineState {
   g.__stationEngine ??= {
     plan: [],
+    liveQueue: [],
+    liveMode: false,
     currentStartedAt: null,
     audioCache: new Map(),
     preparing: new Set(),
@@ -82,6 +91,15 @@ function getState(): EngineState {
     streamedBytes: 0,
   };
   return g.__stationEngine;
+}
+
+/** Welche Warteschlange gerade sendet – die manuelle (Livestudio aktiv) oder die des Autopiloten. */
+function activeQueue(state: EngineState): PlanItem[] {
+  return state.liveMode ? state.liveQueue : state.plan;
+}
+function setActiveQueue(state: EngineState, next: PlanItem[]) {
+  if (state.liveMode) state.liveQueue = next;
+  else state.plan = next;
 }
 
 /** "/api/audio?url=..." → die ursprüngliche externe URL, damit der Server direkt (ohne
@@ -205,8 +223,13 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
   // Schlagzeilen roh vorgelesen wie eine Aufzählung statt wie ein echter Nachrichtensprecher.
   // Verkehr/Wetter/Werbung bleiben unverändert (Wetter/Werbung sind schon eigene generierte
   // Texte, Verkehr enthält sicherheitsrelevante Angaben, die exakt bleiben sollen).
+  // Co-Moderator:innen-Einwurf in einer 2er-Show: statt der generischen Umformulierung reagiert
+  // die zweite Stimme hier per KI echt auf das Thema, über das der Hauptmoderator gerade
+  // gesprochen hat (dialogueTopic), damit ein echtes Gespräch statt zweier Solo-Ansagen entsteht.
   const spokenText =
-    item.kind === "moderation"
+    item.kind === "moderation" && item.dialogueTopic
+      ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
+      : item.kind === "moderation"
       ? await tryHumanizeModeration(text, item.hostName)
       : item.kind === "slogan"
         ? await tryGenerateStationId(text)
@@ -228,7 +251,7 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
 }
 
 function ensureAudioPreparing(state: EngineState) {
-  const upcoming = state.plan.slice(0, PREPARE_AHEAD);
+  const upcoming = activeQueue(state).slice(0, PREPARE_AHEAD);
   for (const item of upcoming) {
     if (state.audioCache.has(item.uid) || state.preparing.has(item.uid)) continue;
     state.preparing.add(item.uid);
@@ -262,7 +285,8 @@ function introSecondsFor(item: PlanItem): number {
 }
 
 function publishNowPlaying(state: EngineState) {
-  const current = state.plan[0] ?? null;
+  const queue = activeQueue(state);
+  const current = queue[0] ?? null;
   const elapsed =
     current && state.currentStartedAt ? (Date.now() - state.currentStartedAt) / 1000 : 0;
   const g2 = globalThis as unknown as { __nowPlaying?: Record<string, unknown> };
@@ -282,12 +306,14 @@ function publishNowPlaying(state: EngineState) {
     introSeconds: current ? introSecondsFor(current) : 0,
     elapsed,
     onAir: Boolean(current && state.currentStartedAt),
+    // Livestudio aktiv? Dann sendet nur die manuelle Warteschlange, der Autopilot pausiert.
+    live: state.liveMode,
     // Bleibt leer, solange im Studio unter "Ausgabe" kein echter Icecast-Stream hinterlegt ist –
     // der Webplayer steigt dann stattdessen live in genau dieses Sendeplan-Element ein.
     streamUrl,
     // Großzügig viele Folge-Elemente – das Studio zeigt daraus die echte Timeline (statt einer
     // eigenen lokalen Simulation), damit Studio, Webplayer & Co. immer exakt dasselbe zeigen.
-    next: state.plan.slice(1, 60).map((i) => ({
+    next: queue.slice(1, 60).map((i) => ({
       uid: i.uid,
       kind: i.kind,
       title: i.title,
@@ -346,6 +372,60 @@ function insertFiller(state: EngineState, gapMs: number): boolean {
   return true;
 }
 
+/** Autopilot-spezifisch: harte Zeitmarken vorziehen und den Sendeplan auffüllen. Läuft nie im
+ *  Livestudio-Modus – dort gibt es weder Zeitmarken noch automatische Planung. */
+function tickAutopilotPlanning(state: EngineState) {
+  const now = Date.now();
+  const hardIdx = state.plan.findIndex(
+    (i) => i.hardStart && i.hardStart <= now && i.hardStart > now - 90_000,
+  );
+  if (hardIdx > 0) {
+    state.plan = state.plan.slice(hardIdx);
+    state.currentStartedAt = null;
+  }
+
+  const totalPlanned = state.plan.reduce((sum, i) => sum + i.duration, 0);
+  if (state.plan.length === 0) {
+    state.plan = buildPlan({ from: new Date(), hours: REFILL_HOURS, ctx: buildContext(state) });
+  } else if (totalPlanned < REFILL_THRESHOLD_SECONDS) {
+    const last = state.plan[state.plan.length - 1];
+    const from = new Date(last.plannedAt + last.duration * 1000);
+    const more = buildPlan({ from, hours: REFILL_HOURS, ctx: buildContext(state) });
+    state.plan = [...state.plan, ...more];
+  }
+}
+
+/** Generischer Fortschritt durch die jeweils aktive Warteschlange (Autopilot-Plan oder
+ *  Live-Warteschlange) – sobald ein Element zu Ende ist, direkt im selben Tick das nächste
+ *  starten, wenn dessen Audio schon vorbereitet ist. Harte Zeitmarken/Lückenfüller gibt es nur
+ *  im Autopilot, nicht im Livestudio-Modus (dort entscheidet ausschließlich der Mensch). */
+function advanceQueue(state: EngineState) {
+  for (;;) {
+    const queue = activeQueue(state);
+    const current = queue[0];
+    if (!current) break;
+    if (state.currentStartedAt === null) {
+      if (!state.liveMode) {
+        const gap = current.hardStart ? current.hardStart - Date.now() : 0;
+        if (gap > 60_000) {
+          if (insertFiller(state, gap)) continue;
+        }
+      }
+      if (state.audioCache.has(current.uid)) {
+        state.currentStartedAt = Date.now();
+      }
+      break;
+    }
+    const elapsed = (Date.now() - state.currentStartedAt) / 1000;
+    if (elapsed < current.duration) break;
+    state.audioCache.delete(current.uid);
+    setActiveQueue(state, queue.slice(1));
+    state.currentStartedAt = null;
+    state.streamingUid = null;
+    state.streamedBytes = 0;
+  }
+}
+
 async function tick() {
   const state = getState();
   if (state.running) return;
@@ -353,56 +433,12 @@ async function tick() {
   try {
     await refreshFeeds(state);
 
-    // Harte Zeitmarken (Nachrichten zur vollen/halben Stunde) sekundengenau vorziehen.
-    const now = Date.now();
-    const hardIdx = state.plan.findIndex(
-      (i) => i.hardStart && i.hardStart <= now && i.hardStart > now - 90_000,
-    );
-    if (hardIdx > 0) {
-      state.plan = state.plan.slice(hardIdx);
-      state.currentStartedAt = null;
-    }
-
-    const totalPlanned = state.plan.reduce((sum, i) => sum + i.duration, 0);
-    if (state.plan.length === 0) {
-      state.plan = buildPlan({ from: new Date(), hours: REFILL_HOURS, ctx: buildContext(state) });
-    } else if (totalPlanned < REFILL_THRESHOLD_SECONDS) {
-      const last = state.plan[state.plan.length - 1];
-      const from = new Date(last.plannedAt + last.duration * 1000);
-      const more = buildPlan({ from, hours: REFILL_HOURS, ctx: buildContext(state) });
-      state.plan = [...state.plan, ...more];
+    if (!state.liveMode) {
+      tickAutopilotPlanning(state);
     }
 
     ensureAudioPreparing(state);
-
-    // In einer Schleife statt nur einmal prüfen: sobald ein Element zu Ende ist, direkt im selben
-    // Tick das nächste starten, wenn dessen Audio schon vorbereitet ist (Regelfall dank
-    // PREPARE_AHEAD) – sonst entsteht zwischen jedem Element eine bis zu einsekündige Lücke.
-    for (;;) {
-      const current = state.plan[0];
-      if (!current) break;
-      if (state.currentStartedAt === null) {
-        // Harte Zeitmarke noch nicht erreicht (z. B. Nachrichten erst zur vollen Stunde) – nicht
-        // einfach jetzt schon starten, sondern erst noch Musik als Lückenfüller einschieben, bis
-        // die Zeit wirklich da ist (siehe insertFiller-Kommentar).
-        const gap = current.hardStart ? current.hardStart - Date.now() : 0;
-        if (gap > 60_000) {
-          if (insertFiller(state, gap)) continue;
-        }
-        if (state.audioCache.has(current.uid)) {
-          state.currentStartedAt = Date.now();
-        }
-        break;
-      }
-      const elapsed = (Date.now() - state.currentStartedAt) / 1000;
-      if (elapsed < current.duration) break;
-      state.audioCache.delete(current.uid);
-      state.plan = state.plan.slice(1);
-      state.currentStartedAt = null;
-      state.streamingUid = null;
-      state.streamedBytes = 0;
-    }
-
+    advanceQueue(state);
     streamLiveAudio(state);
     publishNowPlaying(state);
   } catch (err) {
@@ -420,7 +456,7 @@ async function tick() {
  */
 function streamLiveAudio(state: EngineState) {
   if (state.liveListeners.size === 0) return;
-  const current = state.plan[0];
+  const current = activeQueue(state)[0];
   if (!current || state.currentStartedAt === null) return;
   const entry = state.audioCache.get(current.uid);
   if (!entry) return;
@@ -455,7 +491,7 @@ export function subscribeLive(): ReadableStream<Uint8Array> {
     start(controller) {
       listener = { controller };
       state.liveListeners.add(listener);
-      const current = state.plan[0];
+      const current = activeQueue(state)[0];
       const entry = current ? state.audioCache.get(current.uid) : undefined;
       if (entry && state.streamedBytes > 0) {
         controller.enqueue(new Uint8Array(entry.buffer.subarray(0, state.streamedBytes)));
@@ -477,7 +513,7 @@ export function startStationEngine() {
 
 export function getCurrentAudio(): (AudioEntry & { uid: string }) | null {
   const state = getState();
-  const current = state.plan[0];
+  const current = activeQueue(state)[0];
   if (!current || state.currentStartedAt === null) return null;
   const entry = state.audioCache.get(current.uid);
   return entry ? { ...entry, uid: current.uid } : null;
@@ -492,15 +528,121 @@ export function getAudioByUid(uid: string): (AudioEntry & { uid: string }) | nul
   return entry ? { ...entry, uid } : null;
 }
 
-/** Studio-Steuerung: das aktuelle Element der echten Sendung sofort beenden und weiterschalten. */
+/** Studio-Steuerung: das aktuelle Element der echten Sendung sofort beenden und weiterschalten
+ *  (Autopilot) bzw. das aktuelle Live-Element beenden (Livestudio). */
 export function forceSkipCurrent(): boolean {
   const state = getState();
-  const current = state.plan[0];
+  const queue = activeQueue(state);
+  const current = queue[0];
   if (!current) return false;
   state.audioCache.delete(current.uid);
-  state.plan = state.plan.slice(1);
+  setActiveQueue(state, queue.slice(1));
   state.currentStartedAt = null;
   state.streamingUid = null;
   state.streamedBytes = 0;
   return true;
+}
+
+/** Ob gerade der Livestudio-Modus aktiv ist (Autopilot pausiert, es sendet nur, was manuell in
+ *  die Warteschlange gegeben wird). */
+export function getLiveMode(): boolean {
+  return getState().liveMode;
+}
+
+/** Livestudio-Modus umschalten. Beim Einschalten: leere Warteschlange, es sendet erstmal nichts,
+ *  bis der Host etwas hineinzieht. Beim Ausschalten: der alte Autopilot-Plan ist inzwischen
+ *  zeitlich überholt (plannedAt/hardStart liegen in der Vergangenheit) – wird verworfen, der
+ *  Autopilot baut beim nächsten Tick einen frischen Plan auf. */
+export function setLiveMode(on: boolean) {
+  const state = getState();
+  if (state.liveMode === on) return;
+  state.liveMode = on;
+  state.currentStartedAt = null;
+  state.streamingUid = null;
+  state.streamedBytes = 0;
+  state.audioCache.clear();
+  state.preparing.clear();
+  if (!on) {
+    state.plan = [];
+  }
+}
+
+export type LiveQueueInput = {
+  kind: PlanItem["kind"];
+  title: string;
+  subtitle: string;
+  duration: number;
+  text?: string;
+  voice?: string;
+  hostId?: string;
+  hostName?: string;
+  mediaId?: string;
+  streamUrl?: string;
+  license?: string;
+  source?: string;
+  sponsor?: string | null;
+};
+
+/** Element in die Live-Warteschlange einfügen. playNow=true beendet das aktuell laufende Element
+ *  sofort und setzt das neue an dessen Stelle (wie ein DJ, der manuell den Titel wechselt); sonst
+ *  wird hinten angehängt ("als Nächstes"). */
+export function addToLiveQueue(input: LiveQueueInput, playNow: boolean): PlanItem {
+  const state = getState();
+  const item: PlanItem = {
+    uid: `live-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    kind: input.kind,
+    title: input.title,
+    subtitle: input.subtitle,
+    duration: input.duration,
+    plannedAt: Date.now(),
+    status: "idle",
+    text: input.text,
+    voice: input.voice,
+    hostId: input.hostId,
+    hostName: input.hostName,
+    mediaId: input.mediaId,
+    streamUrl: input.streamUrl,
+    license: input.license,
+    source: input.source,
+    sponsor: input.sponsor ?? null,
+  };
+  if (playNow) {
+    const current = state.liveQueue[0];
+    if (current) state.audioCache.delete(current.uid);
+    state.liveQueue = [item, ...state.liveQueue.slice(current ? 1 : 0)];
+    state.currentStartedAt = null;
+    state.streamingUid = null;
+    state.streamedBytes = 0;
+  } else {
+    state.liveQueue = [...state.liveQueue, item];
+  }
+  return item;
+}
+
+/** Element aus der Live-Warteschlange entfernen. Läuft es gerade, wird es wie ein Skip behandelt
+ *  (sauber beenden), statt es der laufenden Wiedergabe mitten unterm Kopfhörer wegzuziehen. */
+export function removeFromLiveQueue(uid: string) {
+  const state = getState();
+  if (state.liveQueue[0]?.uid === uid) {
+    forceSkipCurrent();
+    return;
+  }
+  state.liveQueue = state.liveQueue.filter((i) => i.uid !== uid);
+}
+
+/** Live-Warteschlange umsortieren (Drag & Drop im Studio). Das gerade laufende Element (Index 0)
+ *  bleibt fest – während es on air ist, würde ein Verschieben den Startzeitpunkt durcheinanderbringen. */
+export function reorderLiveQueue(fromUid: string, toUid: string) {
+  const state = getState();
+  const list = [...state.liveQueue];
+  const fromIdx = list.findIndex((i) => i.uid === fromUid);
+  const toIdx = list.findIndex((i) => i.uid === toUid);
+  if (fromIdx <= 0 || toIdx <= 0 || fromIdx === toIdx) return;
+  const [moved] = list.splice(fromIdx, 1);
+  list.splice(toIdx, 0, moved);
+  state.liveQueue = list;
+}
+
+export function getLiveQueue(): PlanItem[] {
+  return getState().liveQueue;
 }

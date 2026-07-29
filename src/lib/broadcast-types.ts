@@ -54,6 +54,10 @@ export type PlanItem = {
   topicFallback?: boolean;
   /** Begründung/Regel, warum der Planer dieses Thema gewählt hat */
   topicRule?: string;
+  /** Gesetzt bei einer 2er-Show: dieses Element ist die Reaktion der zweiten Stimme auf das
+   *  Thema, über das die Hauptmoderation gerade gesprochen hat – für ein echtes, themenbezogenes
+   *  Gespräch statt einer beliebigen, austauschbaren Bemerkung. */
+  dialogueTopic?: string;
   error?: string;
   /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
   audioUrl?: string;

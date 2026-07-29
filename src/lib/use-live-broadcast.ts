@@ -23,6 +23,8 @@ export type NowPlaying = {
   introSeconds: number;
   elapsed: number;
   onAir: boolean;
+  /** Livestudio-Modus aktiv? Dann sendet nur die manuelle Warteschlange, der Autopilot pausiert. */
+  live: boolean;
   streamUrl: string | null;
   next: NowPlayingNext[];
 };

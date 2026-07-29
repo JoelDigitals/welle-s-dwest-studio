@@ -18,13 +18,14 @@ import { StreamHealth } from "@/components/studio/StreamHealth";
 import { AdRequestsPanel } from "@/components/studio/AdRequestsPanel";
 import { useRadioEngine } from "@/lib/use-radio-engine";
 import { useLiveBroadcast } from "@/lib/use-live-broadcast";
+import { useLiveStudio } from "@/lib/use-live-studio";
 import { useMediaLibrary } from "@/lib/use-media-library";
 import { useNewsFeed, useTrafficFeed } from "@/lib/use-feeds";
 import { useHotline } from "@/lib/use-hotline";
 import { useAdRequests } from "@/lib/use-ad-requests";
 import { useFreeMusicPool } from "@/lib/use-free-music";
 import { loadReports, saveReports } from "@/lib/reports";
-import { loadCampaigns, loadLiveSlots, saveCampaigns, saveLiveSlots } from "@/lib/studio-store";
+import { loadCampaigns, loadLiveSlots, saveCampaigns } from "@/lib/studio-store";
 import type { AdCampaign, LiveSlot, PlanItem, Report } from "@/lib/broadcast-types";
 
 const TITLE = "Welle Südwest – Radiostudio für Saarland & Rheinland-Pfalz";
@@ -142,22 +143,6 @@ function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adRequestsQuery.data]);
 
-  const updateLive = useCallback((fn: (prev: LiveSlot[]) => LiveSlot[]) => {
-    setLiveSlots((prev) => {
-      const next = fn(prev);
-      saveLiveSlots(next);
-      return next;
-    });
-  }, []);
-  const addLiveSlot = useCallback(
-    (s: Omit<LiveSlot, "id">) => updateLive((prev) => [...prev, { ...s, id: `ls${Date.now()}` }]),
-    [updateLive],
-  );
-  const removeLiveSlot = useCallback(
-    (id: string) => updateLive((prev) => prev.filter((s) => s.id !== id)),
-    [updateLive],
-  );
-
   const news = newsQuery.data?.items ?? [];
   const traffic = trafficQuery.data?.items ?? [];
   const hotline = hotlineQuery.data?.items ?? [];
@@ -179,6 +164,7 @@ function Index() {
   // Was wirklich gesendet wird, kommt von der autonomen Server-Engine – nicht aus der lokalen
   // Simulation oben. OnAirBar zeigt und spielt damit exakt das, was auch der Webplayer zeigt.
   const live = useLiveBroadcast();
+  const liveStudio = useLiveStudio();
   const liveCurrent = live.nowPlaying?.uid
     ? {
         kind: live.nowPlaying.kind ?? "music",
@@ -298,27 +284,16 @@ function Index() {
 
           <TabsContent value="live" className="mt-4">
             <LivePanel
-              live={e.live}
-              setLive={e.setLive}
-              micOn={e.micOn}
-              setMicOn={e.setMicOn}
-              micLevel={e.micLevel}
-              musicVolume={e.musicVolume}
-              setMusicVolume={e.setMusicVolume}
-              voiceVolume={e.voiceVolume}
-              setVoiceVolume={e.setVoiceVolume}
-              playNow={e.playNow}
-              cueNext={e.cueNext}
+              liveMode={live.nowPlaying?.live ?? false}
+              setLiveMode={(v) => void liveStudio.setLiveMode(v)}
+              queue={livePlan}
+              playNow={liveStudio.playNow}
+              cueNext={liveStudio.cueNext}
+              remove={(uid) => void liveStudio.remove(uid)}
+              reorder={(fromUid, toUid) => void liveStudio.reorder(fromUid, toUid)}
+              skip={() => void liveStudio.skip()}
               media={library.media}
               traffic={traffic}
-              liveSlots={liveSlots}
-              addLiveSlot={addLiveSlot}
-              removeLiveSlot={removeLiveSlot}
-              plan={e.plan}
-              reorder={e.reorder}
-              remove={e.remove}
-              fallbackEnabled={e.fallbackEnabled}
-              setFallbackEnabled={e.setFallbackEnabled}
             />
           </TabsContent>
 

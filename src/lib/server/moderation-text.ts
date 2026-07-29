@@ -160,3 +160,38 @@ export async function rankNewsByImportance<
     return items;
   }
 }
+
+/** Prompt für den Co-Moderator:innen-Einwurf in einer 2er-Show: die zweite Stimme soll ECHT auf
+ *  das gerade behandelte Thema reagieren (eigene Meinung/Beobachtung/Erfahrung dazu), statt einer
+ *  beliebigen, austauschbaren Floskel – das macht aus zwei Solo-Ansagen ein echtes Gespräch. */
+const COHOST_REPLY_SYSTEM = `Du bist die zweite Stimme in einer 2er-Radioshow bei "Welle Südwest" (Saarland und Rheinland-Pfalz).
+Deine Kolleg:in am Mikro hat gerade über ein bestimmtes Thema gesprochen. Du reagierst jetzt kurz und live darauf – wie ein echtes, spontanes Gespräch im Studio, nicht wie eine zweite eigenständige Moderation.
+Bring etwas Eigenes ein: eine eigene Meinung, eine kurze eigene Erfahrung, eine Nachfrage oder einen kleinen Widerspruch – nicht nur zustimmen.
+GENAU 1 bis 2 kurze, gesprochene Sätze. Keine Begrüßung, keine Anmoderation, keine Regieanweisungen, keine Emojis.`;
+
+export async function generateCoHostReply(topic: string, coHostName?: string): Promise<string> {
+  const user = `Thema, über das gerade gesprochen wurde: ${topic}\nDeine Rolle: ${
+    coHostName ?? "Co-Moderator:in"
+  }\nStil-Impuls: ${pickVariationHint()}\nSchreib jetzt deine kurze, spontane Reaktion.`;
+  const { text } = await generateText({
+    system: COHOST_REPLY_SYSTEM,
+    user,
+    temperature: 1.05,
+    topP: 0.95,
+  });
+  return text.trim();
+}
+
+/** Wie generateCoHostReply, gibt aber bei jedem Fehler die statische Ersatz-Reaktion zurück. */
+export async function tryGenerateCoHostReply(
+  topic: string,
+  fallback: string,
+  coHostName?: string,
+): Promise<string> {
+  try {
+    const reply = await generateCoHostReply(topic, coHostName);
+    return reply || fallback;
+  } catch {
+    return fallback;
+  }
+}

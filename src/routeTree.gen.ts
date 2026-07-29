@@ -19,6 +19,8 @@ import { Route as ApiAudioRouteImport } from './routes/api/audio'
 import { Route as ApiEngineSkipRouteImport } from './routes/api/engine-skip'
 import { Route as ApiFreemusicRouteImport } from './routes/api/freemusic'
 import { Route as ApiIcecastMetadataRouteImport } from './routes/api/icecast-metadata'
+import { Route as ApiLiveModeRouteImport } from './routes/api/live-mode'
+import { Route as ApiLiveQueueRouteImport } from './routes/api/live-queue'
 import { Route as ApiMediaRouteImport } from './routes/api/media'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
@@ -79,6 +81,16 @@ const ApiFreemusicRoute = ApiFreemusicRouteImport.update({
 const ApiIcecastMetadataRoute = ApiIcecastMetadataRouteImport.update({
   id: '/api/icecast-metadata',
   path: '/api/icecast-metadata',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLiveModeRoute = ApiLiveModeRouteImport.update({
+  id: '/api/live-mode',
+  path: '/api/live-mode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLiveQueueRoute = ApiLiveQueueRouteImport.update({
+  id: '/api/live-queue',
+  path: '/api/live-queue',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMediaRoute = ApiMediaRouteImport.update({
@@ -148,6 +160,8 @@ export interface FileRoutesByFullPath {
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
+  '/api/live-mode': typeof ApiLiveModeRoute
+  '/api/live-queue': typeof ApiLiveQueueRoute
   '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
@@ -171,6 +185,8 @@ export interface FileRoutesByTo {
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
+  '/api/live-mode': typeof ApiLiveModeRoute
+  '/api/live-queue': typeof ApiLiveQueueRoute
   '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
@@ -195,6 +211,8 @@ export interface FileRoutesById {
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
+  '/api/live-mode': typeof ApiLiveModeRoute
+  '/api/live-queue': typeof ApiLiveQueueRoute
   '/api/media': typeof ApiMediaRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
@@ -220,6 +238,8 @@ export interface FileRouteTypes {
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
+    | '/api/live-mode'
+    | '/api/live-queue'
     | '/api/media'
     | '/api/news'
     | '/api/newsroom'
@@ -243,6 +263,8 @@ export interface FileRouteTypes {
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
+    | '/api/live-mode'
+    | '/api/live-queue'
     | '/api/media'
     | '/api/news'
     | '/api/newsroom'
@@ -266,6 +288,8 @@ export interface FileRouteTypes {
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
+    | '/api/live-mode'
+    | '/api/live-queue'
     | '/api/media'
     | '/api/news'
     | '/api/newsroom'
@@ -290,6 +314,8 @@ export interface RootRouteChildren {
   ApiEngineSkipRoute: typeof ApiEngineSkipRoute
   ApiFreemusicRoute: typeof ApiFreemusicRoute
   ApiIcecastMetadataRoute: typeof ApiIcecastMetadataRoute
+  ApiLiveModeRoute: typeof ApiLiveModeRoute
+  ApiLiveQueueRoute: typeof ApiLiveQueueRoute
   ApiMediaRoute: typeof ApiMediaRoute
   ApiNewsRoute: typeof ApiNewsRoute
   ApiNewsroomRoute: typeof ApiNewsroomRoute
@@ -373,6 +399,20 @@ declare module '@tanstack/react-router' {
       path: '/api/icecast-metadata'
       fullPath: '/api/icecast-metadata'
       preLoaderRoute: typeof ApiIcecastMetadataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/live-mode': {
+      id: '/api/live-mode'
+      path: '/api/live-mode'
+      fullPath: '/api/live-mode'
+      preLoaderRoute: typeof ApiLiveModeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/live-queue': {
+      id: '/api/live-queue'
+      path: '/api/live-queue'
+      fullPath: '/api/live-queue'
+      preLoaderRoute: typeof ApiLiveQueueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/media': {
@@ -466,6 +506,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEngineSkipRoute: ApiEngineSkipRoute,
   ApiFreemusicRoute: ApiFreemusicRoute,
   ApiIcecastMetadataRoute: ApiIcecastMetadataRoute,
+  ApiLiveModeRoute: ApiLiveModeRoute,
+  ApiLiveQueueRoute: ApiLiveQueueRoute,
   ApiMediaRoute: ApiMediaRoute,
   ApiNewsRoute: ApiNewsRoute,
   ApiNewsroomRoute: ApiNewsroomRoute,

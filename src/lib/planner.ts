@@ -1240,7 +1240,12 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           `Moderation — ${coHost.name}`,
           "Kurzer Einwurf",
           pick(COHOST_REACTIONS, generalIndex),
-          { voice: coHost.voice, hostId: coHost.id, hostName: coHost.name },
+          {
+            voice: coHost.voice,
+            hostId: coHost.id,
+            hostName: coHost.name,
+            dialogueTopic: topic,
+          },
         );
       }
     };
