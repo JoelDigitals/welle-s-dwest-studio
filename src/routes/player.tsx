@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Pause, Play, Radio } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { useLiveBroadcast } from "@/lib/use-live-broadcast";
 
 const TITLE = "Welle Südwest – Webplayer zum Einbinden";
@@ -20,24 +20,27 @@ export const Route = createFileRoute("/player")({
   component: Player,
 });
 
-const KIND_LABEL: Record<string, string> = {
-  music: "Musik",
-  news: "Nachrichten",
-  traffic: "Verkehr",
-  weather: "Wetter",
-  ad: "Werbung",
-  jingle: "Jingle",
-  slogan: "Station-ID",
-  moderation: "Moderation",
-  showopener: "Sendungsstart",
-};
+/** Läuft gerade Musik, zeigt die Laufschrift "Titel -- Künstler -- Welle Süd-West -- " (und
+ *  wiederholt sich von vorne). Bei allem anderen (Zwischenansagen, Nachrichten, Werbung, ...)
+ *  steht nur der Sendername da – niemand braucht den Wortlaut einer Ansage als Laufschrift. */
+function tickerText(kind: string | null | undefined, title: string | null, subtitle: string | null) {
+  if (kind === "music" && title) {
+    const artist = subtitle?.split(" · ")[0]?.trim();
+    return artist ? `${title} -- ${artist} -- Welle Süd-West -- ` : `${title} -- Welle Süd-West -- `;
+  }
+  return "Welle Süd-West -- ";
+}
 
 function Player() {
   const { nowPlaying: state, playing, setPlaying, joinError, stream } = useLiveBroadcast();
+  const text = tickerText(state?.kind, state?.title ?? null, state?.subtitle ?? null);
 
   return (
-    <main className="min-h-dvh bg-background p-4 text-foreground">
-      <section className="panel mx-auto flex max-w-2xl items-center gap-4 p-4">
+    <main className="flex min-h-dvh items-center justify-center bg-background p-4 text-foreground">
+      <style>{`
+        @keyframes ws-ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+      `}</style>
+      <section className="panel flex w-full max-w-2xl items-center gap-4 p-4">
         <button
           type="button"
           aria-label={playing ? "Pause" : "Wiedergabe starten"}
@@ -47,27 +50,14 @@ function Player() {
           {playing ? <Pause className="size-6" /> : <Play className="size-6" />}
         </button>
 
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
-            <Radio className="size-3.5 text-primary" />
-            {state?.station ?? "Welle Südwest"}
-            {state?.onAir && <span className="text-signal">● On Air</span>}
-          </p>
-          <h1 className="display truncate text-2xl leading-tight">
-            {state?.title ?? "Welle Südwest – Saarland & Rheinland-Pfalz"}
-          </h1>
-          <p className="truncate text-sm text-muted-foreground">
-            {state?.kind ? `${KIND_LABEL[state.kind] ?? state.kind} · ` : ""}
-            {state?.subtitle ?? "Musik, Nachrichten und Verkehr aus der Region"}
-          </p>
-          {state?.host && (
-            <p className="truncate text-xs text-muted-foreground">Moderation: {state.host}</p>
-          )}
-          {state?.next?.length ? (
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              Als Nächstes: {state.next[0].title}
-            </p>
-          ) : null}
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div
+            className="flex w-max whitespace-nowrap text-lg font-medium"
+            style={{ animation: "ws-ticker 11s linear infinite" }}
+          >
+            <span className="pr-0">{text}</span>
+            <span aria-hidden="true">{text}</span>
+          </div>
         </div>
       </section>
 

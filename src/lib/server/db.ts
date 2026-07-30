@@ -64,5 +64,30 @@ export async function ensureSchema() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_show_topics_show_date ON show_topics(show_id, used_on)
   `;
+  // Medienbibliothek (Musik/Jingles/Slogans/Werbung/Aufnahmen): lag vorher nur in einer lokalen
+  // JSON-Datei auf dem flüchtigen Render-Dateisystem – ging bei jedem Redeploy verloren (der
+  // Grund für den früheren "Bibliothek ist leer"-Vorfall). Jetzt dauerhaft in Postgres.
+  await sql`
+    CREATE TABLE IF NOT EXISTS media_library (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT '',
+      duration INTEGER NOT NULL DEFAULT 0,
+      file_name TEXT NOT NULL DEFAULT '',
+      mime_type TEXT NOT NULL DEFAULT '',
+      created_at BIGINT NOT NULL,
+      run_from BIGINT,
+      run_until BIGINT,
+      per_hour INTEGER,
+      sponsor_of TEXT,
+      slot TEXT,
+      stream_url TEXT,
+      license TEXT,
+      source TEXT,
+      owner_id TEXT
+    )
+  `;
   g.__schemaReady = true;
 }

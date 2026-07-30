@@ -94,6 +94,13 @@ export function useLiveBroadcast() {
   const crossfadeUidRef = useRef<string | null>(null);
   const fadeRafRef = useRef<number | null>(null);
   const prefetchRef = useRef<Prefetch | null>(null);
+  // Erhöht sich bei jedem neuen Überblend-Versuch UND immer, wenn der Join-Fallback die
+  // Kontrolle übernimmt – ein laufender requestAnimationFrame-Loop prüft diesen Wert bei jedem
+  // Schritt und bricht sofort ab, falls er nicht mehr der aktuelle ist. Verhindert, dass ein
+  // "verwaister" Überblend-Loop (z. B. weil das Zeitfenster durch einen verzögerten Poll knapp
+  // verpasst wurde) später noch unkontrolliert Lautstärke/Wiedergabe auf einem Audio-Element
+  // verändert, das inzwischen für etwas anderes verwendet wird.
+  const fadeTokenRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -200,6 +207,15 @@ export function useLiveBroadcast() {
         if (cancelled) return;
         setJoinError(null);
 
+        // Dieser Fallback übernimmt (z. B. weil ein Überblend-Zeitfenster durch einen verzögerten
+        // Poll verpasst wurde) – jeden noch laufenden Überblend-Loop sofort für ungültig erklären
+        // und Prefetch/Crossfade-Merker zurücksetzen, sonst könnte ein "verwaister" Loop später
+        // noch die Lautstärke dieses frisch belegten Slots verändern oder ihn erneut pausieren.
+        fadeTokenRef.current++;
+        stopFade();
+        prefetchRef.current = null;
+        crossfadeUidRef.current = null;
+
         const slot = getSlot(activeSlotRef.current);
         setSlotSrc(slot, uid, blob);
         slot.audio.volume = 1;
@@ -301,7 +317,11 @@ export function useLiveBroadcast() {
           next.duration * 0.6,
         );
     const remaining = state.duration - elapsedNow;
-    if (remaining > window || remaining <= 0.15) return;
+    // Nur noch "zu früh" abbrechen, nicht mehr "zu spät" (kein "<= 0.15"-Abbruch mehr): der
+    // Poll-Takt (500ms) kann ein enges Zeitfenster (z. B. 1,5s bei Ansage-zu-Ansage) knapp
+    // verpassen – dann lieber sofort mit der (sehr kurzen) Restzeit überblenden, statt an den
+    // harten Neustart-Fallback abzugeben, der Bild zu Bild einen hörbaren Aussetzer verursacht.
+    if (remaining > window) return;
 
     const prefetch = prefetchRef.current;
     if (!prefetch || prefetch.uid !== next.uid || !prefetch.ready) return; // noch am Laden, nächster Tick
@@ -311,6 +331,7 @@ export function useLiveBroadcast() {
     const incoming = getSlot(inactiveKey);
     const outgoing = activeSlot;
     stopFade();
+    const fadeToken = ++fadeTokenRef.current;
     // Sicherheitsabstand: falls der Tick etwas spät dran ist, nie mit negativer/verschwindender
     // Restzeit rechnen (würde die Ansage sofort abschneiden statt sie ausklingen zu lassen).
     const safeRemaining = Math.max(0.3, remaining);
@@ -323,6 +344,9 @@ export function useLiveBroadcast() {
       void incoming.audio.play().catch(() => undefined);
       const swellStart = performance.now() + safeRemaining * 1000;
       const step = (now: number) => {
+        // Ein neuerer Überblend-Versuch oder der Join-Fallback hat übernommen – dieser Loop ist
+        // verwaist und darf nichts mehr an Lautstärke/Wiedergabe verändern.
+        if (fadeTokenRef.current !== fadeToken) return;
         if (now < swellStart) {
           fadeRafRef.current = requestAnimationFrame(step);
           return;
@@ -346,6 +370,7 @@ export function useLiveBroadcast() {
       const fadeMs = Math.max(200, safeRemaining * 1000);
       const start = performance.now();
       const step = (now: number) => {
+        if (fadeTokenRef.current !== fadeToken) return;
         const t = Math.min(1, (now - start) / fadeMs);
         outgoing.audio.volume = 1 - t;
         incoming.audio.volume = t;
