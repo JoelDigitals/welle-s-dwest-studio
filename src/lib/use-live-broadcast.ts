@@ -29,21 +29,30 @@ export type NowPlaying = {
   next: NowPlayingNext[];
 };
 
+/** Jingles/Slogans/Station-IDs zählen für die Überblendung wie Musik: eine Senderkennung
+ *  zwischen zwei Songs soll zügig auf beiden Seiten ineinander überblenden (wie zur Hälfte auf
+ *  den 1., zur Hälfte auf den 2. Song gelegt), statt als isoliertes Element mit eigener Ansage-
+ *  Behandlung zu wirken. */
+function isMusical(kind: string | null | undefined): boolean {
+  return kind === "music" || kind === "jingle" || kind === "slogan";
+}
+
 /** Wie lange sich zwei Elemente beim Übergang überlappen sollen, bevor das alte ausgeblendet ist.
  *  Echte Gesangserkennung bräuchte Audioanalyse – "introSeconds" ist nur eine grobe, serverseitige
- *  Schätzung. Sprache-zu-Sprache bekommt bewusst nur eine winzige Überblendung (glättet den
- *  Schnitt, ohne dass sich zwei Ansagen hörbar überlappen). */
+ *  Schätzung. Moderation soll schon ~5s vor Ende des vorigen Elements einsetzen und noch ~5s ins
+ *  nächste hineinlaufen (keine Stillephasen) – nur Sprache-zu-Sprache bekommt bewusst eine
+ *  kürzere Überblendung (glättet den Schnitt, ohne dass sich zwei Stimmen lange überlappen). */
 function crossfadeWindow(
   fromKind: string | null | undefined,
   toKind: string | null | undefined,
   introSeconds: number,
 ): number {
-  const fromMusic = fromKind === "music";
-  const toMusic = toKind === "music";
-  if (!fromMusic && toMusic) return Math.max(3, introSeconds || 6); // Ansage spricht übers Intro
-  if (fromMusic && !toMusic) return 2.5; // Musik klingt kurz aus, während die Ansage einsetzt
-  if (fromMusic && toMusic) return 3; // klassische DJ-Überblendung
-  return 1.2; // Ansage zu Ansage: nur den Schnitt glätten, nicht wirklich überlappen lassen
+  const fromMusical = isMusical(fromKind);
+  const toMusical = isMusical(toKind);
+  if (!fromMusical && toMusical) return Math.max(5, introSeconds || 6); // Ansage spricht übers Intro
+  if (fromMusical && !toMusical) return 5; // Musik klingt aus, während die Ansage schon einsetzt
+  if (fromMusical && toMusical) return 3; // Songs/Jingles/Slogans zügig ineinander überblenden
+  return 1.5; // Ansage zu Ansage: nur den Schnitt glätten, nicht wirklich überlappen lassen
 }
 
 /** Lautstärke, auf die die Musik "angeduckt" wird, solange noch eine Ansage darüber läuft. */
@@ -281,9 +290,11 @@ export function useLiveBroadcast() {
 
     // Ansage → Musik ist ein Sonderfall (siehe unten): die Stimme bleibt laut, die Musik startet
     // leise darunter und schwillt erst nach dem Ende der Ansage an – kein symmetrisches Überblenden.
-    const isTalkIntoMusic = state.kind !== "music" && next.kind === "music";
+    // Gilt nur für echte gesprochene Inhalte, nicht für Jingles/Slogans zwischen zwei Songs (die
+    // sollen zügig und symmetrisch überblenden, siehe isMusical/crossfadeWindow).
+    const isTalkIntoMusic = !isMusical(state.kind) && next.kind === "music";
     const window = isTalkIntoMusic
-      ? Math.min(Math.max(3, next.introSeconds || 6), state.duration * 0.9, next.duration * 0.6)
+      ? Math.min(Math.max(5, next.introSeconds || 6), state.duration * 0.9, next.duration * 0.6)
       : Math.min(
           crossfadeWindow(state.kind, next.kind, next.introSeconds),
           state.duration * 0.6,

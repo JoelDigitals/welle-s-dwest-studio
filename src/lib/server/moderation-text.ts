@@ -149,6 +149,30 @@ export async function tryHumanizeHandoff(text: string): Promise<string> {
   }
 }
 
+/** Korrespondent:innen-Bericht: bezieht sich auf eine ECHTE aktuelle Meldung (siehe pushCorrespondent
+ *  in planner.ts) – wie bei Nachrichten dürfen Fakten (Ort, Ereignis, Zahlen, Namen) NIEMALS
+ *  verändert oder erfunden werden, nur die Erzählperspektive wird zu einem lebendigen "Ich bin
+ *  gerade vor Ort"-Bericht umformuliert statt einer trockenen Meldung. */
+const CORRESPONDENT_SYSTEM = `Du bist eine Korrespondent:in von "Welle Südwest", die gerade live aus einer anderen Stadt zugeschaltet ist.
+Du bekommst eine echte aktuelle Meldung (Schlagzeile + Kurztext). Verändere NIEMALS die Fakten darin (Ort, Ereignis, Namen, Zahlen) – nur die Erzählform darf sich ändern.
+Erzähl es wie ein Mensch, der gerade selbst vor Ort ist: kurz, lebendig, aus der Ich-Perspektive ("Hier bei mir ..."), mit einer kleinen eigenen Beobachtung oder Einschätzung dazu.
+2 bis 4 kurze gesprochene Sätze, keine Regieanweisungen, keine Emojis.`;
+
+/** Wie tryHumanizeNews, aber mit dem Korrespondent:innen-Prompt (Fakten fest, Ich-Perspektive). */
+export async function tryHumanizeCorrespondentReport(text: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: CORRESPONDENT_SYSTEM,
+      user: text,
+      temperature: 0.85,
+      topP: 0.95,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
 const NEWS_RANK_SYSTEM = `Du bist Nachrichtenredakteur:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt).
 Du bekommst eine Liste von Nachrichten-Kandidaten im Format "ID|Region|Schlagzeile", eine pro Zeile.
 Sortiere INNERHALB jeder Region die IDs nach journalistischer Wichtigkeit (wichtigste zuerst) – Kriterien: Tragweite, Aktualität, wie sehr es Hörer:innen der Region betrifft.
@@ -220,5 +244,50 @@ export async function tryGenerateCoHostReply(
     return reply || fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** Tagesthema einer Sendung: soll sich innerhalb von 90 Tagen NICHT wiederholen – außer eine
+ *  große, andauernde Nachrichtenlage rechtfertigt ausdrücklich eine thematische Fortsetzung
+ *  (z. B. nach einem Anschlag zwei Tage lang Sicherheit/Prävention). Die KI bekommt die zuletzt
+ *  verwendeten Themen als Sperrliste und die aktuellen Top-Meldungen als Kontext. */
+const DAILY_THEME_SYSTEM = `Du bist Redakteur:in bei "Welle Südwest" und wählst das Tagesthema für eine Sendung.
+Du bekommst: die grobe Themenrichtung der Sendung, eine Liste bereits verwendeter Themen der letzten 90 Tage (NICHT wiederholen), und die aktuellen Top-Nachrichten der Region.
+Erfinde EIN neues, konkretes Tagesthema (3 bis 8 Wörter, wie eine Rubrik-Überschrift, kein ganzer Satz) zur genannten Themenrichtung, das NICHT in der Sperrliste steht.
+Ausnahme: Wenn eine der aktuellen Top-Nachrichten ein großes, andauerndes Ereignis ist (z. B. Anschlag, Katastrophe, akute Sicherheitslage), darfst du bewusst ein passendes, verwandtes Thema wählen (z. B. Sicherheit, Prävention, Umgang damit) – auch wenn es einem kürzlich verwendeten Thema ähnelt, denn das ist dann redaktionell gewollt.
+Antworte NUR mit dem Thema selbst, keine Erklärung, keine Anführungszeichen.`;
+
+export async function generateDailyTheme(opts: {
+  direction: string;
+  recentTopics: string[];
+  topNews: string[];
+}): Promise<string> {
+  const user = `Themenrichtung der Sendung: ${opts.direction}
+Bereits verwendete Themen der letzten 90 Tage (nicht wiederholen): ${
+    opts.recentTopics.length ? opts.recentTopics.join(", ") : "keine"
+  }
+Aktuelle Top-Nachrichten: ${opts.topNews.length ? opts.topNews.join(" | ") : "keine besonderen"}
+Wähle jetzt das Tagesthema.`;
+  const { text } = await generateText({
+    system: DAILY_THEME_SYSTEM,
+    user,
+    temperature: 1.0,
+    topP: 0.95,
+  });
+  return text.trim().replace(/^["'„]|["'"]$/g, "");
+}
+
+/** Wie generateDailyTheme, gibt aber bei jedem Fehler eines der Rubrik-Ersatzthemen zurück. */
+export async function tryGenerateDailyTheme(opts: {
+  direction: string;
+  recentTopics: string[];
+  topNews: string[];
+  fallback: string;
+}): Promise<string> {
+  try {
+    const theme = await generateDailyTheme(opts);
+    return theme || opts.fallback;
+  } catch {
+    return opts.fallback;
   }
 }

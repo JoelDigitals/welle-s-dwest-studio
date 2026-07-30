@@ -38,6 +38,12 @@ function berlinParts(at: number) {
 export const berlinHour = (at: number): number => berlinParts(at).hour;
 export const berlinMinute = (at: number): number => berlinParts(at).minute;
 export const berlinDate = (at: number): number => berlinParts(at).date;
+/** "YYYY-MM-DD" in deutscher Ortszeit – als stabiler Tages-Schlüssel für Speicherung (z. B.
+ *  Tagesthemen), unabhängig von der Server-Zeitzone. */
+export const berlinDateKey = (at: number): string => {
+  const p = berlinParts(at);
+  return `${p.year}-${String(p.month + 1).padStart(2, "0")}-${String(p.date).padStart(2, "0")}`;
+};
 export const berlinMonth = (at: number): number => berlinParts(at).month;
 export const berlinIsWeekend = (at: number): boolean => {
   const wd = berlinParts(at).weekday;

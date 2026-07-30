@@ -50,5 +50,19 @@ export async function ensureSchema() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_scheduled_shows_start ON scheduled_shows(start_at)
   `;
+  // Tagesthemen je Sendung – verhindert, dass sich das Thema einer Show innerhalb von 90 Tagen
+  // wiederholt (außer eine große, andauernde Nachrichtenlage rechtfertigt es ausdrücklich).
+  await sql`
+    CREATE TABLE IF NOT EXISTS show_topics (
+      id TEXT PRIMARY KEY,
+      show_id TEXT NOT NULL,
+      topic TEXT NOT NULL,
+      used_on TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_show_topics_show_date ON show_topics(show_id, used_on)
+  `;
   g.__schemaReady = true;
 }

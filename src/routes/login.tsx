@@ -29,7 +29,7 @@ function LoginPage() {
           return;
         }
         if (data?.dbError) {
-          setError("Datenbank nicht erreichbar – TURSO_DATABASE_URL/TURSO_AUTH_TOKEN gesetzt?");
+          setError("Datenbank nicht erreichbar – DATABASE_URL gesetzt?");
         }
         setBootstrap(Boolean(data?.bootstrapNeeded));
       })

@@ -62,6 +62,10 @@ export type PlanItem = {
   /** Markiert eine Sendungs-Übergabe (Verabschiedung + Vorstellung der nächsten Sendung) – wird
    *  faktentreu umformuliert (Namen/Uhrzeiten fest), nicht frei wie normale Moderation. */
   handoff?: boolean;
+  /** Markiert einen Korrespondent:innen-Bericht, der sich auf eine echte aktuelle Meldung
+   *  bezieht – wird faktentreu umformuliert (Fakten fest), nicht frei erfunden wie normale
+   *  Moderation. */
+  correspondentReport?: boolean;
   error?: string;
   /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
   audioUrl?: string;
@@ -136,6 +140,9 @@ export type PlanContext = {
   adCampaigns?: AdCampaign[];
   /** Vorab geplante Livesendungen – in diesen Fenstern plant der Autopilot nichts */
   liveSlots?: LiveSlot[];
+  /** Tagesthema je Sendung (showId -> Thema), wiederholt sich nicht innerhalb von 90 Tagen –
+   *  siehe show-topics-store.ts / ensureDailyThemes in station-engine.ts. */
+  dailyThemes?: Record<string, string>;
   /** KI-Moderationen, Werbung und Nachrichten erst nach Freigabe senden */
   approvalRequired?: boolean;
 };

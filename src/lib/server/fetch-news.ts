@@ -4,18 +4,22 @@ type Region = "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
 type Feed = { region: Region; url: string; source: string };
 
 const FEEDS: Feed[] = [
-  { region: "Saarland", url: "https://www.sr.de/sr/home/nachrichten/index~rss2.xml", source: "SR" },
-  { region: "Saarland", url: "https://www.sol.de/feed/", source: "sol" },
-  { region: "Saarland", url: "https://www.sol.de/blaulicht/feed/", source: "blaulicht" },
+  // sr.de (index~rss2.xml) und sol.de liefern inzwischen 404/403 (Feed abgeschaltet bzw. hart
+  // gegen Bots blockiert, auch mit Browser-Headern) – Saarbrücker Zeitung + die offizielle
+  // Landesregierungs-Pressemitteilung sind gegen den echten Server geprüft und liefern aktuell
+  // echte Inhalte.
+  { region: "Saarland", url: "https://www.saarbruecker-zeitung.de/feed.rss", source: "SZ" },
   {
-    region: "Rheinland-Pfalz",
-    url: "https://www.swr.de/swraktuell/rheinland-pfalz/index~rss2.xml",
-    source: "SWR",
+    region: "Saarland",
+    url: "https://www.saarland.de/DE/presse-informationen/informationen/rss-feed",
+    source: "Landesregierung",
   },
+  // Der alte "index~rss2.xml"-Pfad liefert 404 (SWR hat auf "~rss/.../index.xml" umgestellt,
+  // ebenso wie rheinpfalz.de, das komplett abgeschaltet ist) – gegen den echten Server geprüft.
   {
     region: "Rheinland-Pfalz",
-    url: "https://www.rheinpfalz.de/rss/feed/rheinpfalz-startseite",
-    source: "RP",
+    url: "https://www.swr.de/~rss/swraktuell/rheinland-pfalz/index.xml",
+    source: "SWR",
   },
   // Eigene Inland-/Ausland-Feeds statt des gemischten Haupt-Feeds, damit "Deutschland" und "Welt"
   // wirklich getrennte Rubriken sind statt beides unter "Welt" zusammenzuwerfen (URLs gegen den
@@ -92,8 +96,16 @@ export async function fetchNews(limit = 4): Promise<NewsResult> {
   const results = await Promise.all(
     FEEDS.map(async (feed) => {
       try {
+        // Ein reiner Automations-User-Agent ohne Accept/Accept-Language wird von manchen
+        // Seiten (z. B. saarland.de) als Bot geblockt (403) – mit vollständigeren, browser-
+        // ähnlichen Headern klappt derselbe Abruf (gegen den echten Server geprüft).
         const res = await fetchWithTimeout(feed.url, 6000, {
-          headers: { "User-Agent": "WelleSuedwest/1.0 (Radioautomation)" },
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "application/rss+xml,application/xml,text/xml,*/*",
+            "Accept-Language": "de-DE,de;q=0.9",
+          },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return {

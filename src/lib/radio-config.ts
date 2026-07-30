@@ -131,13 +131,19 @@ export const weatherExpertFor = (seed: number): Host =>
   WEATHER_EXPERTS[Math.abs(Math.round(seed)) % WEATHER_EXPERTS.length];
 
 /** Korrespondent:innen aus wichtigen Städten – melden sich gelegentlich mit einem kurzen
- *  Bericht, den die Moderation ansagt (siehe pushCorrespondent in planner.ts). */
-export type Correspondent = Host & { city: string };
+ *  Bericht, den die Moderation ansagt (siehe pushCorrespondent in planner.ts). "region" ordnet
+ *  jede/n Korrespondent:in einer News-Region zu, damit sich die Schalte auf eine ECHTE aktuelle
+ *  Meldung aus genau dieser Region beziehen kann statt auf einen beliebigen, austauschbaren Text. */
+export type Correspondent = Host & {
+  city: string;
+  region: "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
+};
 export const CORRESPONDENTS: Correspondent[] = [
   {
     id: "co1",
     name: "Simon Adler",
     city: "Berlin",
+    region: "Deutschland",
     voice: "onyx",
     persona: "Hauptstadt-Korrespondent, Politik und Gesellschaft.",
     humor: "sachlich",
@@ -146,6 +152,7 @@ export const CORRESPONDENTS: Correspondent[] = [
     id: "co2",
     name: "Laura Feist",
     city: "New York",
+    region: "Welt",
     voice: "nova",
     persona: "USA-Korrespondentin, Wirtschaft und Alltag drüben.",
     humor: "warm",
@@ -154,6 +161,7 @@ export const CORRESPONDENTS: Correspondent[] = [
     id: "co3",
     name: "Peter Klumb",
     city: "Mainz",
+    region: "Rheinland-Pfalz",
     voice: "alloy",
     persona: "Landeskorrespondent Rheinland-Pfalz, Landtag und Region.",
     humor: "trocken",
@@ -162,6 +170,7 @@ export const CORRESPONDENTS: Correspondent[] = [
     id: "co4",
     name: "Selin Aydin",
     city: "Saarbrücken",
+    region: "Saarland",
     voice: "shimmer",
     persona: "Landeskorrespondentin Saarland, nah an den Menschen.",
     humor: "frech",
@@ -170,6 +179,7 @@ export const CORRESPONDENTS: Correspondent[] = [
     id: "co5",
     name: "Marc Dubois",
     city: "Brüssel",
+    region: "Welt",
     voice: "ballad",
     persona: "EU-Korrespondent, erklärt Brüssel verständlich.",
     humor: "warm",

@@ -7,6 +7,7 @@ import {
   newsAnchorFor,
   weatherExpertFor,
   correspondentFor,
+  CORRESPONDENTS,
   type Host,
   type Show,
   type Correspondent,
@@ -139,20 +140,29 @@ function newsIntroText(host: Host, at: number, stories: Story[], mode: "full" | 
 }
 
 /** Ausführlicher Nachrichtenblock. */
+/** Nur den ersten Satz eines (ggf. mehrsätzigen) Meldungstexts – für Kurznachrichten reicht ein
+ *  kurzer Kontextsatz zur Schlagzeile, nicht der ganze ausführliche Text. */
+function firstSentence(body: string): string {
+  const m = body.match(/^[^.!?]*[.!?]/);
+  return (m ? m[0] : body).trim();
+}
+
 function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: number) {
-  const list = stories.slice(0, mode === "full" ? 8 : 10);
+  // Kurznachrichten waren bisher nur nackte Schlagzeilen ohne jeden Kontext – jetzt weniger
+  // Meldungen (nur das Wichtigste vom Wichtigsten), aber jede davon ein echter kurzer
+  // Nachrichtensatz (Schlagzeile + ein kurzer Kontextsatz) statt einer trockenen Liste.
+  const list = stories.slice(0, mode === "full" ? 8 : 4);
   let prevRegion: string | undefined;
   const parts = list.map((s, i) => {
     const lead = regionLead(s.region, prevRegion, i);
     prevRegion = s.region;
     const head = endWithDot(s.headline);
-    if (mode === "short") return `${lead ? `${lead}: ` : ""}${head}`;
-    const body = s.body ? ` ${endWithDot(s.body)}` : "";
+    const body = s.body ? ` ${endWithDot(mode === "full" ? s.body : firstSentence(s.body))}` : "";
     // Kein Hinweis mehr auf einen Bericht/Korrespondent:in, der/die "gleich" oder "im Laufe des
     // Tages" mehr dazu sagt - das war ein Versprechen ohne echten Inhalt danach (es ging direkt
     // zur nächsten Meldung weiter). Echte Korrespondent:innen-Schalten laufen jetzt separat über
     // pushCorrespondent im Sendeplan, nicht als Ankündigung mitten in den Nachrichten.
-    const author = s.author ? ` Von ${s.author}.` : "";
+    const author = mode === "full" && s.author ? ` Von ${s.author}.` : "";
     const connect = i === 0 ? "" : `${pick(CONNECT, i + at)} `;
     return `${connect}${lead ? `${lead}: ` : ""}${head}${body}${author}`;
   });
@@ -1108,7 +1118,16 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
 
     /** Songs, die als Nächstes laufen – erst ansagen, dann abspielen. */
     let pendingBlock: MusicSource[] = [];
-    const pendingTitles = () => pendingBlock.map((t) => `${t.title} von ${t.artist}`);
+    /** Nur ankündigen, wenn der Block auch wirklich noch vor der Stundengrenze reinpasst – sonst
+     *  wurde Musik angesagt ("Jetzt X, gleich Y"), die push() (siehe unten, plannedAt >= hourEnd)
+     *  danach lautlos verworfen hat, weil kein Platz mehr war. Echter, reproduzierbarer Bug: die
+     *  Ansage blieb im Plan, der Song verschwand einfach – "Musik wird angekündigt, aber nicht
+     *  gespielt". Ohne genug Platz gibt es lieber gar keine Ankündigung statt einer falschen. */
+    const pendingTitles = () => {
+      const blockSeconds = pendingBlock.reduce((sum, t) => sum + t.duration, 0);
+      if (cursor + (blockSeconds + 15) * 1000 > hourEnd) return [];
+      return pendingBlock.map((t) => `${t.title} von ${t.artist}`);
+    };
 
     /** Ein Musiktitel – maximal zwei Songs pro Interpret und Plan. */
     const selectTrack = (maxSeconds: number): MusicSource | null => {
@@ -1147,7 +1166,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       if (pendingBlock.length) return pendingBlock;
       const first = selectTrack(maxSeconds);
       if (!first) return pendingBlock;
-      const second = selectTrack(maxSeconds - first.duration - 25);
+      // Variable Blocklänge: nicht immer zwei Songs am Stück vorbereiten, manchmal auch nur
+      // einer – ein festes Muster klingt sonst zu schematisch statt wie echtes Radio.
+      const second = Math.random() < 0.6 ? selectTrack(maxSeconds - first.duration - 25) : null;
       pendingBlock = second ? [first, second] : [first];
       return pendingBlock;
     };
@@ -1156,10 +1177,11 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       pendingBlock = [];
       block.forEach((track, i) => {
         pushTrack(track);
-        // Zwischen zwei Songs im selben Block sonst nichts – das klingt sonst wie eine lange
-        // stille Pause. Eine kurze Senderkennung überbrückt den Übergang (spielt beim Webplayer
-        // über den ausklingenden/einsetzenden Song, nicht als harter Stille-Schnitt).
-        if (i < block.length - 1) pushJingle();
+        // Zwischen zwei Songs im selben Block läuft nicht IMMER eine Senderkennung dazwischen –
+        // manchmal direkt der nächste Song. Läuft eine Station-ID dazwischen, überblendet sie
+        // zügig auf beiden Seiten (siehe crossfadeWindow in use-live-broadcast.ts), statt als
+        // isolierter Stille-Block zu wirken.
+        if (i < block.length - 1 && Math.random() < 0.5) pushJingle();
       });
       return block.length > 0;
     };
@@ -1342,20 +1364,44 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
      *  Korrespondent:in in einer anderen Stadt (Berlin, USA, Mainz, Saarbrücken, Brüssel). */
     const pushCorrespondent = () => {
       generalIndex++;
-      const correspondent = correspondentFor(generalIndex + Math.floor(cursor / 3600_000));
+      const newsItems = ctx.news ?? [];
+      // Bevorzugt eine Korrespondent:in, deren Region gerade eine echte aktuelle Meldung hat,
+      // damit sich die Schalte auf ein wirkliches Thema bezieht statt auf einen beliebigen,
+      // austauschbaren Text. Gibt es (z. B. bei ausgefallenen Feeds) gar keine Meldungen, fällt
+      // es auf die alte, themenunabhängige Auswahl zurück.
+      const withNews = CORRESPONDENTS.filter((c) => newsItems.some((n) => n.region === c.region));
+      const seed = generalIndex + Math.floor(cursor / 3600_000);
+      const correspondent = withNews.length ? pick(withNews, seed) : correspondentFor(seed);
+      const story = newsItems.find((n) => n.region === correspondent.region);
+
       speak(
         "moderation",
         `Schalte zu ${correspondent.city}`,
         "Übergabe",
         correspondentHandoffText(correspondent, cursor),
       );
-      speak(
-        "moderation",
-        `Bericht aus ${correspondent.city}`,
-        correspondent.name,
-        pick(CORRESPONDENT_REPORTS[correspondent.id] ?? [], generalIndex),
-        { voice: correspondent.voice, hostId: correspondent.id, hostName: correspondent.name },
-      );
+      if (story) {
+        speak(
+          "moderation",
+          `Bericht aus ${correspondent.city}`,
+          correspondent.name,
+          `${story.headline}. ${story.body}`.trim(),
+          {
+            voice: correspondent.voice,
+            hostId: correspondent.id,
+            hostName: correspondent.name,
+            correspondentReport: true,
+          },
+        );
+      } else {
+        speak(
+          "moderation",
+          `Bericht aus ${correspondent.city}`,
+          correspondent.name,
+          pick(CORRESPONDENT_REPORTS[correspondent.id] ?? [], generalIndex),
+          { voice: correspondent.voice, hostId: correspondent.id, hostName: correspondent.name },
+        );
+      }
     };
 
     /** Nachrichtenblock: Anmoderation → Trenner → Meldungen → Trenner → Verkehr. Läuft über
@@ -1441,6 +1487,19 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           .join(", ")
           .toLowerCase()}. Schön, dass Sie dabei sind.`;
         speak("showopener", showTitleWithHost(show, host), "Sendungs-Opener", opener);
+        // Tagesthema: einmal pro Sendung und Kalendertag, wiederholt sich nicht innerhalb von
+        // 90 Tagen (siehe ensureDailyThemes in station-engine.ts) – vorher liefen dieselben paar
+        // Rubrik-Ersatzthemen irgendwann in Serie, jetzt gibt es täglich wirklich etwas Neues.
+        const dailyTheme = ctx.dailyThemes?.[show.id];
+        if (dailyTheme) {
+          generalIndex++;
+          speak(
+            "moderation",
+            `Tagesthema — ${host.name}`,
+            dailyTheme,
+            `Unser großes Thema heute bei ${show.title}: ${dailyTheme}. Dazu hören Sie im Laufe der Sendung immer wieder etwas von uns.`,
+          );
+        }
       }
     }
 

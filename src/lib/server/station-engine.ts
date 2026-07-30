@@ -20,12 +20,17 @@ import {
   tryHumanizeNews,
   tryGenerateCoHostReply,
   tryHumanizeHandoff,
+  tryHumanizeCorrespondentReport,
+  tryGenerateDailyTheme,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
 import { listScheduledShows } from "./scheduled-shows-store";
+import { getTopicForDate, listRecentTopics, recordTopic } from "./show-topics-store";
+import { SHOWS } from "@/lib/radio-config";
+import { berlinDateKey } from "@/lib/berlin-time";
 
 /**
  * Autonome Sende-Engine: läuft dauerhaft im Server-Prozess, unabhängig davon, ob irgendwo ein
@@ -36,7 +41,10 @@ import { listScheduledShows } from "./scheduled-shows-store";
 // Klein genug, dass der Übergang zwischen zwei Sendeplan-Elementen nicht spürbar hängt (die
 // eigentliche Umschaltung passiert nur zum nächsten Tick, nie sofort bei Ablauf der Dauer).
 const TICK_MS = 250;
-const PREPARE_AHEAD = 3;
+// Großzügiges Lookahead-Fenster: verhindert, dass ein hartes Zeitmarken-Vorziehen (siehe
+// tickAutopilotPlanning) auf ein Element springt, dessen Audio noch gar nicht vorbereitet wurde –
+// das war eine der Hauptursachen für hörbare Stille im Livestream (Sprung + leeres audioCache).
+const PREPARE_AHEAD = 8;
 const REFILL_HOURS = 0.25;
 const REFILL_THRESHOLD_SECONDS = 8 * 60;
 
@@ -45,6 +53,9 @@ const TRAFFIC_TTL_MS = 3 * 60_000;
 const FREEMUSIC_TTL_MS = 60 * 60_000;
 const MEDIA_TTL_MS = 30_000;
 const SCHEDULED_SHOWS_TTL_MS = 30_000;
+// Muss nicht oft geprüft werden – Tagesthemen ändern sich nur einmal pro Kalendertag, ein
+// gelegentlicher Check reicht, um einen neuen Tag zeitnah zu bemerken.
+const DAILY_THEMES_TTL_MS = 10 * 60_000;
 
 /** duration ist die real gemessene Hördauer (aus den MP3-Frames) – nicht die grobe Planungsschätzung. */
 type AudioEntry = { buffer: Buffer; contentType: string; duration: number };
@@ -68,6 +79,12 @@ type EngineState = {
   /** Im Voraus geplante Sendetermine (Datum/Uhrzeit/Titel/Host) – die Engine schaltet zu ihrer
    *  Startzeit automatisch in den Livestudio-Modus und am Ende automatisch wieder zurück. */
   scheduledShows: { items: LiveSlot[]; at: number };
+  /** Tagesthema je Sendung (showId -> Thema) – wiederholt sich nicht innerhalb von 90 Tagen
+   *  (außer bei einer andauernden großen Nachrichtenlage), siehe ensureDailyThemes(). */
+  dailyThemes: { items: Record<string, string>; at: number };
+  /** An welchem Berlin-Kalendertag die aktuellen dailyThemes.items generiert wurden – ändert
+   *  sich der Tag, werden alle Sendungen neu befüllt. */
+  dailyThemesDate: string;
   /** ID der geplanten Sendung, die den Livestudio-Modus GERADE automatisch scharf geschaltet hat
    *  (nicht der Mensch manuell) – damit die Engine am Fensterende automatisch wieder ausschaltet. */
   autoLiveShowId: string | null;
@@ -98,6 +115,8 @@ function getState(): EngineState {
     freeMusic: { items: [], at: 0 },
     media: { items: [], at: 0 },
     scheduledShows: { items: [], at: 0 },
+    dailyThemes: { items: {}, at: 0 },
+    dailyThemesDate: "",
     autoLiveShowId: null,
     suppressedShowId: null,
     running: false,
@@ -127,6 +146,49 @@ function rawStreamUrl(streamUrl: string): string {
   } catch {
     return streamUrl;
   }
+}
+
+/** Einmal pro Kalendertag je Sendung ein neues, nicht-wiederholendes Tagesthema erzeugen (siehe
+ *  show-topics-store.ts – 90-Tage-Sperrliste). Läuft bewusst NICHT als "await" in refreshFeeds/
+ *  tick() mit, da hier bis zu 6 sequenzielle KI-Aufrufe nötig sein können – das würde Wiedergabe
+ *  und Livestream für mehrere Sekunden einfrieren lassen. Läuft stattdessen im Hintergrund über
+ *  mehrere Ticks hinweg; bis ein Thema fertig ist, nutzt buildContext() einfach den Fallback. */
+async function ensureDailyThemes(state: EngineState) {
+  const now = Date.now();
+  if (now - state.dailyThemes.at < DAILY_THEMES_TTL_MS) return;
+  state.dailyThemes.at = now;
+  const today = berlinDateKey(now);
+  const items: Record<string, string> =
+    state.dailyThemesDate === today ? { ...state.dailyThemes.items } : {};
+  if (Object.keys(items).length >= SHOWS.length) {
+    state.dailyThemesDate = today;
+    return;
+  }
+  const topNews = state.news.items.slice(0, 5).map((n) => n.headline);
+  for (const show of SHOWS) {
+    if (items[show.id]) continue;
+    try {
+      const existing = await getTopicForDate(show.id, today);
+      if (existing) {
+        items[show.id] = existing;
+        continue;
+      }
+      const recent = await listRecentTopics(show.id, 90);
+      const theme = await tryGenerateDailyTheme({
+        direction: show.topics.join(", "),
+        recentTopics: recent.map((r) => r.topic),
+        topNews,
+        fallback: show.topics[0] ?? show.title,
+      });
+      await recordTopic(show.id, theme, today);
+      items[show.id] = theme;
+    } catch (err) {
+      console.error("[station-engine] Tagesthema fehlgeschlagen:", show.id, err);
+      items[show.id] = show.topics[0] ?? show.title;
+    }
+  }
+  state.dailyThemes = { items, at: now };
+  state.dailyThemesDate = today;
 }
 
 async function refreshFeeds(state: EngineState) {
@@ -186,6 +248,10 @@ async function refreshFeeds(state: EngineState) {
     );
   }
   await Promise.all(jobs);
+  // Bewusst nicht awaited (siehe Kommentar an ensureDailyThemes) – darf den Tick nicht blockieren.
+  void ensureDailyThemes(state).catch((err) =>
+    console.error("[station-engine] Tagesthemen fehlgeschlagen:", err),
+  );
 }
 
 function buildContext(state: EngineState): PlanContext {
@@ -198,6 +264,7 @@ function buildContext(state: EngineState): PlanContext {
     freeMusic: state.freeMusic.items,
     adCampaigns: listApprovedAdCampaigns(),
     liveSlots: state.scheduledShows.items,
+    dailyThemes: state.dailyThemes.items,
     approvalRequired: false,
   };
 }
@@ -256,13 +323,15 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
       ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
       : item.kind === "moderation" && item.handoff
         ? await tryHumanizeHandoff(text)
-        : item.kind === "moderation"
-          ? await tryHumanizeModeration(text, item.hostName)
-          : item.kind === "slogan"
-            ? await tryGenerateStationId(text)
-            : item.kind === "news"
-              ? await tryHumanizeNews(text)
-              : text;
+        : item.kind === "moderation" && item.correspondentReport
+          ? await tryHumanizeCorrespondentReport(text)
+          : item.kind === "moderation"
+            ? await tryHumanizeModeration(text, item.hostName)
+            : item.kind === "slogan"
+              ? await tryGenerateStationId(text)
+              : item.kind === "news"
+                ? await tryHumanizeNews(text)
+                : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste
@@ -433,7 +502,10 @@ function tickAutopilotPlanning(state: EngineState) {
   const hardIdx = state.plan.findIndex(
     (i) => i.hardStart && i.hardStart <= now && i.hardStart > now - 90_000,
   );
-  if (hardIdx > 0) {
+  // Nur springen, wenn das Zielelement (z. B. die Nachrichten) schon fertig vorbereitet ist –
+  // sonst würde der Sprung selbst eine hörbare Stille erzeugen (Timer läuft schon, Audio fehlt
+  // noch). Ein paar Sekunden Zeitplan-Drift sind unhörbar, eine Stille im Livestream nicht.
+  if (hardIdx > 0 && state.audioCache.has(state.plan[hardIdx].uid)) {
     state.plan = state.plan.slice(hardIdx);
     state.currentStartedAt = null;
   }

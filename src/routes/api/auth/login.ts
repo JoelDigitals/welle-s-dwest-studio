@@ -54,7 +54,7 @@ export const Route = createFileRoute("/api/auth/login")({
         } catch (err) {
           console.error("[auth/login] Datenbank nicht erreichbar:", err);
           return Response.json(
-            { error: "Datenbank nicht erreichbar – TURSO_DATABASE_URL/TURSO_AUTH_TOKEN gesetzt?" },
+            { error: "Datenbank nicht erreichbar – DATABASE_URL gesetzt?" },
             { status: 503, headers: cors },
           );
         }
