@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mp3Encoder } from "lamejs";
+// Muss vor jeder Mp3Encoder-Nutzung importiert sein – behebt mehrere fehlende globale
+// Referenzen im lamejs-Paket selbst (siehe lame-shim.ts für Details).
+import "./lame-shim";
 
 /** Sendeintervall der MP3-Chunks zum Server – klein genug für echtes Live-Gefühl, groß genug,
  *  um nicht bei jedem winzigen Encoder-Aufruf einen eigenen HTTP-Request zu feuern. */
