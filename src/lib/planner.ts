@@ -387,6 +387,17 @@ export function trafficText(ctx: PlanContext, at: number) {
   return clean(`${intro} ${body} ${listenerLines(ctx)} ${outro}`);
 }
 
+/** Lesbare Bezeichnung je Hotline-Meldungsart – für pushHotlineMix (Rohmaterial für die KI). */
+const HOTLINE_TYPE_LABEL: Record<string, string> = {
+  verkehr: "Verkehr",
+  blitzer: "Blitzer",
+  wetter: "Wetterbeobachtung",
+  gruss: "Gruß",
+  musikwunsch: "Musikwunsch",
+  lob_kritik: "Lob & Kritik",
+  sonstiges: "Sonstiges",
+};
+
 /** Frische Live-Meldungen aus der Hörer-Hotline (max. 6 Stunden alt). */
 function freshHotline(ctx: PlanContext) {
   const now = Date.now();
@@ -1030,6 +1041,12 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
   const usedTalk = new Set<string>();
   /** Themen-Checkliste über den gesamten Plan hinweg. */
   const coveredTopics = new Set<TopicCat>();
+  /** Schon (in diesem buildPlan()-Durchlauf) als Hotline-Mix eingeplante IDs – MUSS außerhalb von
+   *  pushHotlineMix() leben und über alle Stunden-Durchläufe hinweg bestehen bleiben, sonst weiß
+   *  ein späterer Aufruf im selben Plan nichts von einem vorigen und plant dieselben, noch nicht
+   *  wirklich "announced" (das passiert erst über den ctx-Callback, außerhalb dieser Funktion)
+   *  Meldungen immer wieder neu ein – bis der interne 30er-Schleifenschutz greift. */
+  const hotlineAnnouncedThisPlan = new Set(ctx.hotlineAnnouncedIds ?? []);
 
   const start = new Date(opts.from);
   start.setMinutes(0, 0, 0);
@@ -1404,6 +1421,42 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       }
     };
 
+    /** Sonstige Hörer-Hotline-Meldungen (Gruß, Musikwunsch, Lob & Kritik, Sonstiges) – Verkehr/
+     *  Blitzer/Wetter laufen weiterhin über die eigenen, bereits bestehenden Blöcke (siehe
+     *  listenerLines/blitzerLine/weatherListenerLine). Wird automatisch eingeplant, sobald
+     *  unangesagte Meldungen vorliegen (siehe fillUntil), statt auf eine manuelle Aktion im
+     *  Studio zu warten – und markiert sie danach als "schon vorgelesen" (ctx.markHotlineAnnounced),
+     *  damit dieselbe Meldung nicht stundenlang wiederholt wird. */
+    const pushHotlineMix = () => {
+      const list = freshHotline(ctx)
+        .filter((h) => !hotlineAnnouncedThisPlan.has(h.id))
+        .filter((h) => h.type === "gruss" || h.type === "musikwunsch" || h.type === "lob_kritik" || h.type === "sonstiges")
+        // Älteste zuerst (fair in Reihenfolge des Eingangs), höchstens 4 pro Segment – sonst
+        // würde ein einzelnes Segment bei vielen Meldungen unnötig lang und unübersichtlich.
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .slice(0, 4);
+      if (!list.length) return false;
+      generalIndex++;
+      const raw = list
+        .map((h) => `${HOTLINE_TYPE_LABEL[h.type]}${h.caller ? ` von ${h.caller}` : ""}: ${h.message}`)
+        .join("\n");
+      speak(
+        "moderation",
+        "Hörermeldungen",
+        `${list.length} aus der Hotline`,
+        `Meldungen aus der Hörer-Hotline:\n${raw}`,
+        { hotlineMix: true },
+      );
+      const ids = list.map((h) => h.id);
+      // Sofort auch lokal merken (nicht erst über den ctx-Callback, der z. B. bei der alten
+      // clientseitigen Simulation ohnehin fehlt) – sonst plant ein zweiter pushHotlineMix()-Aufruf
+      // in derselben Stunde oder der nächsten Stunde desselben buildPlan()-Durchlaufs dieselben
+      // Meldungen direkt nochmal ein.
+      for (const id of ids) hotlineAnnouncedThisPlan.add(id);
+      ctx.markHotlineAnnounced?.(ids);
+      return true;
+    };
+
     /** Nachrichtenblock: Anmoderation → Trenner → Meldungen → Trenner → Verkehr. Läuft über
      *  eine eigene Nachrichtensprecher:in, nicht über die Sendungsmoderation – wie im echten
      *  Regionalradio üblich. */
@@ -1523,6 +1576,15 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         const live = liveSlotAt(ctx.liveSlots, cursor);
         if (live) {
           cursor = live.startAt + live.minutes * 60_000;
+          continue;
+        }
+        // Unangesagte Hörermeldungen (Gruß/Musikwunsch/Lob & Kritik/Sonstiges) bekommen Vorrang
+        // vor der normalen Rotation – "an der nächsten Stelle automatisch einspielen", statt auf
+        // den nächsten Rotations-Durchlauf zu warten. Feuert genau einmal pro Batch (danach als
+        // angesagt markiert), kein Dauerschleifen-Risiko.
+        if (pushHotlineMix()) {
+          flushBlock();
+          if (cursor === before) break;
           continue;
         }
         // Erst die nächsten (maximal zwei) Songs festlegen …

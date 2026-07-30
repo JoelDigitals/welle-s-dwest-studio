@@ -11,7 +11,7 @@ import { fetchNews } from "./fetch-news";
 import { fetchTraffic } from "./fetch-traffic";
 import { searchFreeMusic } from "./freemusic-search";
 import { curateFreeMusic, FREE_MUSIC_QUERIES } from "@/lib/free-music-pool";
-import { listHotlineReports } from "./hotline-store";
+import { listHotlineReports, listAnnouncedHotlineIds, markHotlineAnnounced } from "./hotline-store";
 import { listApprovedAdCampaigns } from "./ad-campaigns-store";
 import { synthesizeSpeechMp3Only } from "./tts-synthesize";
 import {
@@ -22,6 +22,7 @@ import {
   tryHumanizeHandoff,
   tryHumanizeCorrespondentReport,
   tryGenerateDailyTheme,
+  tryHumanizeHotlineMix,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
@@ -265,6 +266,8 @@ function buildContext(state: EngineState): PlanContext {
     adCampaigns: listApprovedAdCampaigns(),
     liveSlots: state.scheduledShows.items,
     dailyThemes: state.dailyThemes.items,
+    hotlineAnnouncedIds: listAnnouncedHotlineIds(),
+    markHotlineAnnounced,
     approvalRequired: false,
   };
 }
@@ -328,13 +331,15 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
         ? await tryHumanizeHandoff(text)
         : item.kind === "moderation" && item.correspondentReport
           ? await tryHumanizeCorrespondentReport(text)
-          : item.kind === "moderation"
-            ? await tryHumanizeModeration(text, item.hostName)
-            : item.kind === "slogan"
-              ? await tryGenerateStationId(text)
-              : item.kind === "news"
-                ? await tryHumanizeNews(text)
-                : text;
+          : item.kind === "moderation" && item.hotlineMix
+            ? await tryHumanizeHotlineMix(text, item.hostName)
+            : item.kind === "moderation"
+              ? await tryHumanizeModeration(text, item.hostName)
+              : item.kind === "slogan"
+                ? await tryGenerateStationId(text)
+                : item.kind === "news"
+                  ? await tryHumanizeNews(text)
+                  : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste

@@ -291,3 +291,29 @@ export async function tryGenerateDailyTheme(opts: {
     return opts.fallback;
   }
 }
+
+/** Sammel-Segment für "sonstige" Hörer-Hotline-Meldungen (Gruß, Musikwunsch, Lob & Kritik,
+ *  Sonstiges) – Verkehr/Blitzer/Wetter laufen weiterhin über die eigenen, bereits bestehenden
+ *  Blöcke (listenerLines/blitzerLine/weatherListenerLine in planner.ts). Wie beim Korrespondent:
+ *  innen-Bericht darf der Kern jeder Meldung (wer grüßt wen, welcher Song, worum es bei Lob/
+ *  Kritik geht) nicht erfunden oder verändert werden, aber die Verbindung zwischen den einzelnen
+ *  Meldungen wird frei und warm geschrieben statt roh nacheinander vorgelesen. */
+const HOTLINE_MIX_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und liest gerade Meldungen aus der Hörer-Hotline vor: Grüße, Musikwünsche, Lob und Kritik oder Sonstiges.
+Du bekommst eine Liste roher Hörer-Meldungen (Art, ggf. Name, Nachricht). Verändere NIEMALS den Kern einer Meldung (wer grüßt wen, welcher Song gewünscht wird, worum es bei Lob/Kritik geht) und erfinde keine neuen Namen oder Details dazu – aber verbinde die Meldungen zu einem warmen, natürlichen, flüssig gesprochenen Moderationstext, statt sie roh nacheinander vorzulesen.
+Bedank dich bei den Hörer:innen fürs Melden und geh kurz und persönlich auf jede einzelne Meldung ein.
+Gesprochene Sprache, herzlich, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
+
+/** Wie tryHumanizeCorrespondentReport, aber mit dem Hotline-Mix-Prompt. */
+export async function tryHumanizeHotlineMix(text: string, hostName?: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: HOTLINE_MIX_SYSTEM,
+      user: `Sprecher:in: ${hostName ?? "Alex"}\n${text}`,
+      temperature: 0.9,
+      topP: 0.95,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}

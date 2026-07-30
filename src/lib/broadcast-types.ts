@@ -67,6 +67,10 @@ export type PlanItem = {
    *  bezieht – wird faktentreu umformuliert (Fakten fest), nicht frei erfunden wie normale
    *  Moderation. */
   correspondentReport?: boolean;
+  /** Markiert ein automatisches Hörer-Hotline-Sammelsegment (Gruß/Musikwunsch/Lob & Kritik/
+   *  Sonstiges) – Kern jeder Meldung (Namen, Wunsch, Anliegen) bleibt fest, nur die Verbindung
+   *  zwischen den Meldungen wird frei formuliert (siehe pushHotlineMix in planner.ts). */
+  hotlineMix?: boolean;
   error?: string;
   /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
   audioUrl?: string;
@@ -144,6 +148,14 @@ export type PlanContext = {
   /** Tagesthema je Sendung (showId -> Thema), wiederholt sich nicht innerhalb von 90 Tagen –
    *  siehe show-topics-store.ts / ensureDailyThemes in station-engine.ts. */
   dailyThemes?: Record<string, string>;
+  /** IDs bereits automatisch vorgelesener Hotline-Meldungen (siehe pushHotlineMix in planner.ts) –
+   *  verhindert, dass dieselbe Gruß-/Musikwunsch-/Lob&Kritik-Meldung stundenlang wiederholt wird. */
+  hotlineAnnouncedIds?: string[];
+  /** Markiert Hotline-Meldungen als "schon automatisch vorgelesen" – von station-engine.ts an den
+   *  echten Speicher (hotline-store.ts) angebunden; planner.ts selbst bleibt frei von Server-
+   *  Imports, damit es weiterhin auch von der alten, rein clientseitigen Simulation genutzt
+   *  werden kann (use-radio-engine.ts), die diesen Callback einfach nicht setzt. */
+  markHotlineAnnounced?: (ids: string[]) => void;
   /** KI-Moderationen, Werbung und Nachrichten erst nach Freigabe senden */
   approvalRequired?: boolean;
 };
