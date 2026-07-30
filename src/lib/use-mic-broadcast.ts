@@ -10,12 +10,19 @@ const CHUNK_MS = 300;
  * Transkodieren nötig) und schickt die fertigen Bytes per POST an /api/mic-stream, von wo die
  * Sende-Engine sie direkt an alle /live-stream-Hörer:innen weiterreicht. Liefert zusätzlich einen
  * einfachen Pegelwert (0..1) für eine VU-Anzeige im Studio (gleiches Muster wie der alte,
- * rein kosmetische VU-Meter in use-radio-engine.ts, hier aber am echten Sende-Signal).
+ * rein kosmetische VU-Meter in use-radio-engine.ts, hier aber am echten Sende-Signal) sowie
+ * sentBytes/lastError, damit im Studio sichtbar ist, ob wirklich Daten rausgehen – ohne das gäbe
+ * es keine Rückmeldung, falls z. B. die Berechtigung verweigert wurde oder der Upload fehlschlägt.
  */
 export function useMicBroadcast() {
   const [active, setActive] = useState(false);
   const [muted, setMutedState] = useState(false);
   const [level, setLevel] = useState(0);
+  const [sentBytes, setSentBytes] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  // Selbst-Mithören (z. B. über Kopfhörer): standardmäßig aus, da es über Lautsprecher sofort
+  // Rückkopplung (Pfeifen) gäbe – bewusst ein Opt-in mit Warnhinweis in der UI.
+  const [monitor, setMonitorState] = useState(false);
   // Eingangslautstärke (Vorverstärkung): 1 = unverändert, bis 2 = doppelt so laut – wirkt sowohl
   // auf das tatsächlich gesendete Signal als auch auf die Pegelanzeige, damit der Bediener direkt
   // sieht, wie laut es beim Hörer ankommt.
@@ -24,6 +31,7 @@ export function useMicBroadcast() {
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const monitorNodeRef = useRef<GainNode | null>(null);
   const encoderRef = useRef<Mp3Encoder | null>(null);
   const rafRef = useRef(0);
   const pendingRef = useRef<Int8Array[]>([]);
@@ -35,6 +43,11 @@ export function useMicBroadcast() {
   const setGain = useCallback((value: number) => {
     setGainState(value);
     if (gainNodeRef.current) gainNodeRef.current.gain.value = value;
+  }, []);
+
+  const setMonitor = useCallback((value: boolean) => {
+    setMonitorState(value);
+    if (monitorNodeRef.current) monitorNodeRef.current.gain.value = value ? 0.8 : 0;
   }, []);
 
   // Stummschalten sendet keine Bytes mehr (Hörer:innen hören Stille auf dem Mikrofon-Segment),
@@ -57,7 +70,20 @@ export function useMicBroadcast() {
       merged.set(new Uint8Array(c.buffer, c.byteOffset, c.length), offset);
       offset += c.length;
     }
-    void fetch("/api/mic-stream", { method: "POST", body: merged }).catch(() => undefined);
+    void fetch("/api/mic-stream", { method: "POST", body: merged })
+      .then((res) => {
+        if (!res.ok) {
+          setError(
+            res.status === 401
+              ? "Nicht mehr angemeldet – bitte neu einloggen, das Mikrofon sendet sonst ins Leere."
+              : `Senden fehlgeschlagen (${res.status})`,
+          );
+          return;
+        }
+        setError(null);
+        setSentBytes((n) => n + merged.length);
+      })
+      .catch(() => setError("Verbindung zum Server unterbrochen – Mikrofon sendet gerade nicht."));
   }, []);
 
   const stop = useCallback(() => {
@@ -75,72 +101,109 @@ export function useMicBroadcast() {
     processorRef.current?.disconnect();
     processorRef.current = null;
     gainNodeRef.current = null;
+    monitorNodeRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     void ctxRef.current?.close();
     ctxRef.current = null;
     setActive(false);
     setLevel(0);
+    setSentBytes(0);
     mutedRef.current = false;
     setMutedState(false);
   }, [sendPending]);
 
   const start = useCallback(async () => {
     if (active) return;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    streamRef.current = stream;
-    const ctx = new AudioContext();
-    ctxRef.current = ctx;
-    const source = ctx.createMediaStreamSource(stream);
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const ctx = new AudioContext();
+      ctxRef.current = ctx;
+      // Manche Browser (v. a. Chrome) legen einen AudioContext, der nach einem "await" entsteht,
+      // als "suspended" an, weil die Autoplay-Richtlinie die Nutzer:innen-Geste dann nicht mehr
+      // erkennt – ohne explizites resume() würde onaudioprocess NIE feuern und es käme kein
+      // einziges Byte zustande, obwohl im UI alles "aktiv" aussieht.
+      if (ctx.state !== "running") await ctx.resume();
 
-    const gainNode = ctx.createGain();
-    gainNode.gain.value = gain;
-    gainNodeRef.current = gainNode;
-    source.connect(gainNode);
+      const source = ctx.createMediaStreamSource(stream);
 
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    gainNode.connect(analyser);
-    const levelData = new Uint8Array(analyser.frequencyBinCount);
-    const meterLoop = () => {
-      analyser.getByteTimeDomainData(levelData);
-      let peak = 0;
-      for (const v of levelData) peak = Math.max(peak, Math.abs(v - 128) / 128);
-      setLevel(peak);
-      rafRef.current = requestAnimationFrame(meterLoop);
-    };
-    meterLoop();
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = gain;
+      gainNodeRef.current = gainNode;
+      source.connect(gainNode);
 
-    const encoder = new Mp3Encoder(1, ctx.sampleRate, 96);
-    encoderRef.current = encoder;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      gainNode.connect(analyser);
+      const levelData = new Uint8Array(analyser.frequencyBinCount);
+      const meterLoop = () => {
+        analyser.getByteTimeDomainData(levelData);
+        let peak = 0;
+        for (const v of levelData) peak = Math.max(peak, Math.abs(v - 128) / 128);
+        setLevel(peak);
+        rafRef.current = requestAnimationFrame(meterLoop);
+      };
+      meterLoop();
 
-    // ScriptProcessorNode ist veraltet, aber für dieses reine Sprach-Encoding in jedem Browser
-    // unterstützt – ein AudioWorklet wäre hier nur unnötige Zusatzkomplexität.
-    const processor = ctx.createScriptProcessor(4096, 1, 1);
-    processorRef.current = processor;
-    processor.onaudioprocess = (e) => {
-      const input = e.inputBuffer.getChannelData(0);
-      const samples = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const s = Math.max(-1, Math.min(1, input[i]));
-        samples[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
-      const encoded = encoder.encodeBuffer(samples);
-      if (encoded.length > 0 && !mutedRef.current) pendingRef.current.push(encoded);
-    };
-    gainNode.connect(processor);
-    // ScriptProcessorNode feuert in manchen Browsern (Chrome) nur, wenn es an ein Ziel
-    // angeschlossen ist – stummgeschaltet, damit sich der Bediener nicht selbst als Echo hört.
-    const silentSink = ctx.createGain();
-    silentSink.gain.value = 0;
-    processor.connect(silentSink);
-    silentSink.connect(ctx.destination);
+      const encoder = new Mp3Encoder(1, ctx.sampleRate, 96);
+      encoderRef.current = encoder;
 
-    flushTimerRef.current = setInterval(sendPending, CHUNK_MS);
-    setActive(true);
-  }, [active, gain, sendPending]);
+      // ScriptProcessorNode ist veraltet, aber für dieses reine Sprach-Encoding in jedem Browser
+      // unterstützt – ein AudioWorklet wäre hier nur unnötige Zusatzkomplexität.
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+      processor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
+        const samples = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+          const s = Math.max(-1, Math.min(1, input[i]));
+          samples[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+        const encoded = encoder.encodeBuffer(samples);
+        if (encoded.length > 0 && !mutedRef.current) pendingRef.current.push(encoded);
+      };
+      gainNode.connect(processor);
+      // ScriptProcessorNode feuert in manchen Browsern (Chrome) nur, wenn es an ein Ziel
+      // angeschlossen ist – deshalb über einen eigenen, standardmäßig stummen Gain-Knoten geführt.
+      // Gleichzeitig dient genau dieser Knoten als Selbst-Mithören-Regler (setMonitor): auf
+      // Kopfhörern kann er hochgedreht werden, ohne den Encoder-Pfad zu berühren.
+      const monitorNode = ctx.createGain();
+      monitorNode.gain.value = monitor ? 0.8 : 0;
+      monitorNodeRef.current = monitorNode;
+      processor.connect(monitorNode);
+      monitorNode.connect(ctx.destination);
+
+      flushTimerRef.current = setInterval(sendPending, CHUNK_MS);
+      setActive(true);
+    } catch (err) {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      void ctxRef.current?.close();
+      ctxRef.current = null;
+      setError(
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "Mikrofon-Zugriff wurde verweigert – bitte im Browser erlauben und erneut versuchen."
+          : "Mikrofon konnte nicht gestartet werden.",
+      );
+    }
+  }, [active, gain, monitor, sendPending]);
 
   useEffect(() => () => stop(), [stop]);
 
-  return { active, muted, setMuted, level, gain, setGain, start, stop };
+  return {
+    active,
+    muted,
+    setMuted,
+    monitor,
+    setMonitor,
+    level,
+    gain,
+    setGain,
+    sentBytes,
+    error,
+    start,
+    stop,
+  };
 }

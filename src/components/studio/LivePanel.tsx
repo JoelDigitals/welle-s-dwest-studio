@@ -558,6 +558,16 @@ export function LivePanel(props: Props) {
               </Button>
             )}
             {mic.active && (
+              <Button
+                size="sm"
+                variant={mic.monitor ? "secondary" : "outline"}
+                onClick={() => mic.setMonitor(!mic.monitor)}
+                title="Nur mit Kopfhörern benutzen – über Lautsprecher gibt es sonst eine Rückkopplung (Pfeifen)."
+              >
+                {mic.monitor ? "Mithören (an)" : "Über Kopfhörer mithören"}
+              </Button>
+            )}
+            {mic.active && (
               <span
                 className={`text-xs font-bold ${
                   mic.muted
@@ -591,6 +601,13 @@ export function LivePanel(props: Props) {
               {Math.round(mic.gain * 100)}%
             </span>
           </div>
+          {mic.active && (
+            <p className="text-xs text-muted-foreground">
+              Gesendet: {(mic.sentBytes / 1024).toFixed(1)} KB
+              {mic.sentBytes === 0 && " – noch keine Bytes raus, kurz warten oder ins Mikrofon sprechen"}
+            </p>
+          )}
+          {mic.error && <p className="text-xs text-destructive">{mic.error}</p>}
         </div>
 
         <div className="rounded-lg border border-border bg-secondary/40 p-3">
