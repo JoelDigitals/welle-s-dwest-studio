@@ -123,9 +123,14 @@ export function useMicBroadcast() {
       return;
     }
     try {
+      const AudioContextCtor: typeof AudioContext | undefined =
+        window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AudioContextCtor) throw new Error("Web Audio API (AudioContext) wird nicht unterstützt.");
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const ctx = new AudioContext();
+      const ctx = new AudioContextCtor();
       ctxRef.current = ctx;
       // Manche Browser (v. a. Chrome) legen einen AudioContext, der nach einem "await" entsteht,
       // als "suspended" an, weil die Autoplay-Richtlinie die Nutzer:innen-Geste dann nicht mehr
@@ -156,8 +161,13 @@ export function useMicBroadcast() {
       const encoder = new Mp3Encoder(1, ctx.sampleRate, 96);
       encoderRef.current = encoder;
 
-      // ScriptProcessorNode ist veraltet, aber für dieses reine Sprach-Encoding in jedem Browser
-      // unterstützt – ein AudioWorklet wäre hier nur unnötige Zusatzkomplexität.
+      // ScriptProcessorNode ist veraltet, aber (noch) überall unterstützt – ein AudioWorklet wäre
+      // hier nur unnötige Zusatzkomplexität. Trotzdem defensiv prüfen: falls ein Browser die
+      // Methode doch einmal entfernt hat, soll das eine klare Meldung geben statt eines rohen
+      // "is not a function"-Absturzes.
+      if (typeof ctx.createScriptProcessor !== "function") {
+        throw new Error("Dieser Browser unterstützt die benötigte Audio-Verarbeitung nicht mehr.");
+      }
       const processor = ctx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
       processor.onaudioprocess = (e) => {
@@ -192,18 +202,26 @@ export function useMicBroadcast() {
       streamRef.current = null;
       void ctxRef.current?.close();
       ctxRef.current = null;
-      const name = err instanceof DOMException ? err.name : null;
-      setError(
-        name === "NotAllowedError"
-          ? "Mikrofon-Zugriff wurde verweigert – im Browser bei den Website-Einstellungen erlauben und neu laden."
-          : name === "NotFoundError"
-            ? "Kein Mikrofon gefunden – Gerät anschließen/auswählen und erneut versuchen."
-            : name === "NotReadableError"
-              ? "Mikrofon ist bereits durch eine andere App/Tab belegt."
-              : name === "SecurityError"
-                ? "Mikrofon-Zugriff hier aus Sicherheitsgründen blockiert (braucht HTTPS)."
-                : `Mikrofon konnte nicht gestartet werden${name ? ` (${name})` : ""}.`,
-      );
+      if (err instanceof DOMException) {
+        setError(
+          err.name === "NotAllowedError"
+            ? "Mikrofon-Zugriff wurde verweigert – im Browser bei den Website-Einstellungen erlauben und neu laden."
+            : err.name === "NotFoundError"
+              ? "Kein Mikrofon gefunden – Gerät anschließen/auswählen und erneut versuchen."
+              : err.name === "NotReadableError"
+                ? "Mikrofon ist bereits durch eine andere App/Tab belegt."
+                : err.name === "SecurityError"
+                  ? "Mikrofon-Zugriff hier aus Sicherheitsgründen blockiert (braucht HTTPS)."
+                  : `Mikrofon-Fehler (${err.name}): ${err.message}`,
+        );
+      } else if (err instanceof Error) {
+        // Kein DOMException (z. B. fehlende AudioContext-/ScriptProcessor-Unterstützung) – hier
+        // IMMER die echte Fehlermeldung mit ausgeben, statt eines nichtssagenden Standardtexts,
+        // sonst lässt sich die eigentliche Ursache nie herausfinden.
+        setError(`Mikrofon konnte nicht gestartet werden – ${err.message}`);
+      } else {
+        setError("Mikrofon konnte nicht gestartet werden (unbekannter Fehler).");
+      }
     }
   }, [active, gain, monitor, sendPending]);
 
