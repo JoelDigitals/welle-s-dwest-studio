@@ -36,9 +36,27 @@ function tickerText(kind: string | null | undefined, title: string | null, subti
   return "Welle Süd-West -- ";
 }
 
+/** Wie lange EIN einzelner Durchlauf von "text" zum Scrollen braucht – bleibt so für kurzen und
+ *  langen Text gleich schnell lesbar. */
+const SECONDS_PER_PASS = 11;
+/** Mindestlänge (Zeichen) des wiederholten Blocks: verhindert, dass bei kurzem Text (z. B. nur
+ *  "Welle Süd-West -- ", wenn gerade keine Musik läuft) die Laufschrift schon vor dem rechten
+ *  Rand des Players zu Ende ist – sonst sieht man eine Lücke und den Sprung zurück auf Anfang
+ *  ("das Ende"), statt eines wirklich endlosen Bandes. */
+const MIN_BLOCK_CHARS = 200;
+
+/** Baut aus "text" einen ausreichend oft wiederholten Block (immer breiter als der Player, egal
+ *  wie kurz text ist) plus die passende Animationsdauer, damit ein einzelner "text"-Durchlauf
+ *  trotz der Wiederholungen weiterhin SECONDS_PER_PASS dauert. */
+function tickerBlock(text: string) {
+  const repeat = Math.max(1, Math.ceil(MIN_BLOCK_CHARS / Math.max(1, text.length)));
+  return { block: text.repeat(repeat), seconds: SECONDS_PER_PASS * repeat };
+}
+
 function Player() {
   const { nowPlaying: state, playing, setPlaying, joinError, stream } = useLiveBroadcast();
   const text = tickerText(state?.kind, state?.title ?? null, state?.subtitle ?? null);
+  const { block, seconds } = tickerBlock(text);
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background p-4 text-foreground">
@@ -58,10 +76,10 @@ function Player() {
         <div className="min-w-0 flex-1 overflow-hidden">
           <div
             className="flex w-max whitespace-nowrap text-lg font-medium"
-            style={{ animation: "ws-ticker 11s linear infinite" }}
+            style={{ animation: `ws-ticker ${seconds}s linear infinite` }}
           >
-            <span className="pr-0">{text}</span>
-            <span aria-hidden="true">{text}</span>
+            <span className="pr-0">{block}</span>
+            <span aria-hidden="true">{block}</span>
           </div>
         </div>
       </section>

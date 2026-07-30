@@ -116,6 +116,12 @@ export function useMicBroadcast() {
   const start = useCallback(async () => {
     if (active) return;
     setError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(
+        "Dieser Browser/diese Verbindung erlaubt kein Mikrofon (braucht HTTPS oder localhost).",
+      );
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -156,6 +162,10 @@ export function useMicBroadcast() {
       processorRef.current = processor;
       processor.onaudioprocess = (e) => {
         const input = e.inputBuffer.getChannelData(0);
+        // WICHTIG: ScriptProcessorNode liefert von sich aus NUR Stille am Ausgang – ohne dieses
+        // Kopieren des Eingangs in den Ausgangspuffer bliebe das Selbst-Mithören (monitorNode)
+        // immer stumm, egal wie hoch dessen Gain steht (Eingang und Ausgang sind getrennte Puffer).
+        e.outputBuffer.getChannelData(0).set(input);
         const samples = new Int16Array(input.length);
         for (let i = 0; i < input.length; i++) {
           const s = Math.max(-1, Math.min(1, input[i]));
@@ -182,10 +192,17 @@ export function useMicBroadcast() {
       streamRef.current = null;
       void ctxRef.current?.close();
       ctxRef.current = null;
+      const name = err instanceof DOMException ? err.name : null;
       setError(
-        err instanceof DOMException && err.name === "NotAllowedError"
-          ? "Mikrofon-Zugriff wurde verweigert – bitte im Browser erlauben und erneut versuchen."
-          : "Mikrofon konnte nicht gestartet werden.",
+        name === "NotAllowedError"
+          ? "Mikrofon-Zugriff wurde verweigert – im Browser bei den Website-Einstellungen erlauben und neu laden."
+          : name === "NotFoundError"
+            ? "Kein Mikrofon gefunden – Gerät anschließen/auswählen und erneut versuchen."
+            : name === "NotReadableError"
+              ? "Mikrofon ist bereits durch eine andere App/Tab belegt."
+              : name === "SecurityError"
+                ? "Mikrofon-Zugriff hier aus Sicherheitsgründen blockiert (braucht HTTPS)."
+                : `Mikrofon konnte nicht gestartet werden${name ? ` (${name})` : ""}.`,
       );
     }
   }, [active, gain, monitor, sendPending]);
