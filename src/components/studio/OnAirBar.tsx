@@ -10,6 +10,7 @@ const KIND_LABEL: Record<string, string> = {
   traffic: "Verkehr",
   ad: "Werbung",
   moderation: "Moderation",
+  mic: "Mikrofon (live)",
 };
 
 /** Nur die Felder, die OnAirBar tatsächlich anzeigt – egal ob lokale Simulation oder echte Sendung. */

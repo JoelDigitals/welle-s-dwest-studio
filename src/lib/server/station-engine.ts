@@ -291,6 +291,9 @@ function trimToAudio(raw: Buffer, fallbackDuration: number): { buffer: Buffer; d
 }
 
 async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
+  // Mikrofon-Live-Element: es gibt keine Datei und keinen Text zum Vorbereiten – die echten Bytes
+  // kommen erst live über pushMicAudioChunk() rein, sobald der Bediener wirklich spricht.
+  if (item.kind === "mic") return null;
   // Eigene Bibliothek (Musik/Jingles/Slogans/Werbespots, vom Studio hochgeladen) – geht davon aus,
   // dass die Datei ein MP3 ist, genau wie der Rest des Systems (KI-Sprachausgabe, freie Musik).
   if (item.mediaId && !item.streamUrl) {
@@ -349,6 +352,7 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
 function ensureAudioPreparing(state: EngineState) {
   const upcoming = activeQueue(state).slice(0, PREPARE_AHEAD);
   for (const item of upcoming) {
+    if (item.kind === "mic") continue; // kein Audio zum Vorbereiten – kommt live rein
     if (state.audioCache.has(item.uid) || state.preparing.has(item.uid)) continue;
     state.preparing.add(item.uid);
     prepareAudio(item)
@@ -537,7 +541,9 @@ function advanceQueue(state: EngineState) {
           if (insertFiller(state, gap)) continue;
         }
       }
-      if (state.audioCache.has(current.uid)) {
+      // "mic" hat kein Audio zum Cachen (die Bytes kommen erst live rein, sobald gesprochen wird) –
+      // muss trotzdem sofort starten, sonst würde die Wiedergabe für immer hier hängen bleiben.
+      if (state.audioCache.has(current.uid) || current.kind === "mic") {
         state.currentStartedAt = Date.now();
       }
       break;
@@ -586,6 +592,9 @@ function streamLiveAudio(state: EngineState) {
   if (state.liveListeners.size === 0) return;
   const current = activeQueue(state)[0];
   if (!current || state.currentStartedAt === null) return;
+  // Mikrofon-Element: nichts aus dem audioCache streamen – die echten Bytes kommen live über
+  // pushMicAudioChunk() (Mikrofon-Ingest-Route) direkt an state.liveListeners.
+  if (current.kind === "mic") return;
   const entry = state.audioCache.get(current.uid);
   if (!entry) return;
 
@@ -629,6 +638,22 @@ export function subscribeLive(): ReadableStream<Uint8Array> {
       state.liveListeners.delete(listener);
     },
   });
+}
+
+/** Nimmt einen MP3-Byte-Chunk vom Mikrofon-Ingest (/api/mic-stream) entgegen und reicht ihn direkt
+ *  an alle /live-stream-Hörer:innen durch – nur wirksam, während wirklich ein "mic"-Element läuft
+ *  (Sicherheitscheck gegen Bytes zur falschen Zeit, z. B. nach dem Beenden der Aufnahme). */
+export function pushMicAudioChunk(buffer: Buffer) {
+  const state = getState();
+  const current = activeQueue(state)[0];
+  if (!current || current.kind !== "mic") return;
+  for (const listener of state.liveListeners) {
+    try {
+      listener.controller.enqueue(new Uint8Array(buffer));
+    } catch {
+      state.liveListeners.delete(listener);
+    }
+  }
 }
 
 export function startStationEngine() {

@@ -147,7 +147,12 @@ export function useLiveBroadcast() {
     return () => clearInterval(id);
   }, [state?.uid, state?.onAir, state?.startedAt, state?.duration, state?.elapsed]);
 
-  const stream = state?.streamUrl ?? null;
+  // Ein "mic"-Element hat kein vorbereitetes Audio zum Nachladen/Überblenden (die Bytes kommen
+  // erst live rein, sobald wirklich gesprochen wird) – genau wie bei einer im Studio hinterlegten
+  // externen Icecast-URL wird hier die gesamte Join-/Prefetch-/Überblend-Logik übersprungen und
+  // stattdessen direkt der eigene Dauer-Stream (/live-stream) verwendet, der die Mikrofon-Bytes
+  // inzwischen live weiterreicht (siehe pushMicAudioChunk in station-engine.ts).
+  const stream = state?.streamUrl ?? (state?.kind === "mic" ? "/live-stream" : null);
 
   const getSlot = (key: "a" | "b"): Slot => {
     let slot = slotsRef.current[key];

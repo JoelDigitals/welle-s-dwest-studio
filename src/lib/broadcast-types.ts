@@ -10,7 +10,8 @@ export type ItemKind =
   | "weather"
   | "ad"
   | "slogan"
-  | "recording";
+  | "recording"
+  | "mic";
 
 export type PrepStatus = "idle" | "preparing" | "ready" | "error";
 

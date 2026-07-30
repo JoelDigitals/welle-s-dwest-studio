@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   GripVertical,
+  Mic,
+  Mic2,
   Newspaper,
   Play,
   Radio,
@@ -11,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -21,6 +24,7 @@ import { speakDuration, trafficText } from "@/lib/planner";
 import { useScheduledShows } from "@/lib/use-scheduled-shows";
 import { useMyRecordings } from "@/lib/use-my-recordings";
 import { useAuth } from "@/lib/use-auth";
+import { useMicBroadcast } from "@/lib/use-mic-broadcast";
 import type { PlanItem, TrafficFeedItem, NewsFeedItem } from "@/lib/broadcast-types";
 import type { MediaRecord } from "@/lib/media-db";
 import type { LiveQueueItemInput } from "@/lib/use-live-studio";
@@ -50,6 +54,7 @@ const KIND_LABEL: Record<string, string> = {
   ad: "Werbung",
   slogan: "Slogan",
   recording: "Aufnahme",
+  mic: "Mikrofon",
 };
 
 const time = (at: number) =>
@@ -86,6 +91,39 @@ export function LivePanel(props: Props) {
   const [showTitle, setShowTitle] = useState("");
   const [showAt, setShowAt] = useState("");
   const [showMinutes, setShowMinutes] = useState("60");
+
+  const [micTitle, setMicTitle] = useState("");
+  const [micSubtitle, setMicSubtitle] = useState("");
+  const [micMinutes, setMicMinutes] = useState("3");
+  const mic = useMicBroadcast();
+  // Mikrofon-Steuerung (Berechtigung/An-Aus/Pegel/Lautstärke) ist bewusst IMMER nutzbar, nicht
+  // erst wenn das Mikrofon-Element schon on air ist – so kann die Berechtigung eingeholt und der
+  // Pegel geprüft werden, bevor das Studio überhaupt live geht. micLive markiert nur, ob gerade
+  // wirklich gesendet wird (fürs "ON AIR"-Badge und die Ausgangs-Anzeige).
+  const micLive = props.liveMode && props.queue[0]?.kind === "mic";
+  const wasMicLiveRef = useRef(false);
+
+  // Wenn das Mikrofon-Element on air ENDET (Ablauf der Dauer, Skip, oder Umschalten weg von
+  // Live), ohne dass der Bediener selbst "Mikrofon aus" gedrückt hat: Aufnahme trotzdem sauber
+  // beenden, sonst würde weiter unbemerkt Mikrofon-Ton kodiert und ins Leere gesendet. Löst aber
+  // NICHT aus, nur weil micLive noch nie true war (sonst könnte man den Test-Betrieb vor dem
+  // Livegang nie starten).
+  useEffect(() => {
+    if (wasMicLiveRef.current && !micLive && mic.active) mic.stop();
+    wasMicLiveRef.current = micLive;
+  }, [micLive, mic.active, mic.stop]);
+
+  const micItem = (): LiveQueueItemInput => ({
+    kind: "mic",
+    title: micTitle.trim() || "Live-Mikrofon",
+    subtitle: micSubtitle.trim() || `${me?.displayName ?? "Live"} · Mikrofon`,
+    duration: Math.max(30, (Number(micMinutes) || 3) * 60),
+  });
+
+  const stopMic = () => {
+    mic.stop();
+    if (micLive) props.skip();
+  };
 
   const music = props.media.filter(
     (m) =>
@@ -443,6 +481,132 @@ export function LivePanel(props: Props) {
           </Tabs>
         </section>
       </div>
+
+      {/* Mikrofon – echtes Live-Sprechen statt KI-Stimme */}
+      <section className="panel space-y-3 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="display flex items-center gap-2 text-lg">
+            <Mic className="size-4" /> Mikrofon
+          </h4>
+          {/* Ausgang: zeigt jederzeit, was diesen Moment wirklich gesendet wird – unabhängig
+              davon, ob das Mikrofon gerade nur zum Testen an ist. */}
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2.5 py-1 text-xs">
+            <span className="uppercase tracking-widest text-muted-foreground">Ausgang:</span>
+            <span className="font-semibold">
+              {props.liveMode ? (props.queue[0]?.title ?? "Warteschlange leer") : "Autopilot sendet"}
+            </span>
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Titel, Untertitel und Dauer sind frei wählbar – erscheinen so im Studio, Player & Co. Das
+          Mikrofon selbst kann schon vorab getestet werden (Berechtigung erteilen, Pegel/Lautstärke
+          prüfen), bevor das Element wirklich on air ist – gesendet wird erst, sobald "Ausgang"
+          oben wirklich dieses Mikrofon-Element zeigt.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_0.6fr]">
+          <Input
+            value={micTitle}
+            onChange={(e) => setMicTitle(e.target.value)}
+            placeholder="Titel (z. B. Interview, Gespräch)"
+          />
+          <Input
+            value={micSubtitle}
+            onChange={(e) => setMicSubtitle(e.target.value)}
+            placeholder="Untertitel (optional)"
+          />
+          <Input
+            type="number"
+            min={1}
+            value={micMinutes}
+            onChange={(e) => setMicMinutes(e.target.value)}
+            placeholder="Min."
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => props.playNow(micItem())}>
+            Jetzt sprechen
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => props.cueNext(micItem())}>
+            Als Nächstes
+          </Button>
+        </div>
+
+        {/* Mikrofon-Steuerung: immer bedienbar (nicht erst wenn on air), damit Berechtigung,
+            Pegel und Lautstärke schon vor dem Livegang geprüft werden können. */}
+        <div
+          className={`space-y-2 rounded-lg border p-3 ${
+            micLive && mic.active
+              ? "border-onair bg-onair/10"
+              : "border-border bg-secondary/40"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              variant={mic.active ? "destructive" : "default"}
+              onClick={() => (mic.active ? stopMic() : void mic.start())}
+            >
+              <Mic2 className="size-4" /> {mic.active ? "Mikrofon aus" : "Mikrofon an"}
+            </Button>
+            {mic.active && (
+              <Button
+                size="sm"
+                variant={mic.muted ? "secondary" : "outline"}
+                onClick={() => mic.setMuted(!mic.muted)}
+              >
+                {mic.muted ? "Stumm (aufheben)" : "Stummschalten"}
+              </Button>
+            )}
+            {mic.active && (
+              <span
+                className={`text-xs font-bold ${
+                  mic.muted
+                    ? "text-muted-foreground"
+                    : micLive
+                      ? "text-onair"
+                      : "text-muted-foreground"
+                }`}
+              >
+                {mic.muted ? "● STUMM" : micLive ? "● ON AIR" : "● Test (nicht on air)"}
+              </span>
+            )}
+            <div className="h-2 min-w-24 flex-1 overflow-hidden rounded-full bg-secondary">
+              <div
+                className="h-full bg-signal transition-[width] duration-100"
+                style={{ width: `${Math.min(100, Math.round(mic.level * 140))}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-32 shrink-0 text-xs text-muted-foreground">Eingangslautstärke</span>
+            <Slider
+              min={0}
+              max={2}
+              step={0.05}
+              value={[mic.gain]}
+              onValueChange={([v]) => mic.setGain(v)}
+              className="flex-1"
+            />
+            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {Math.round(mic.gain * 100)}%
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-secondary/40 p-3">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Nachrichtentext zum Selbstvorlesen
+          </p>
+          {props.news.slice(0, 3).map((n) => (
+            <p key={n.id} className="mb-2 text-sm last:mb-0">
+              <span className="font-semibold">{n.headline}.</span> {n.body}
+            </p>
+          ))}
+          {props.news.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aktuell keine Meldungen.</p>
+          )}
+        </div>
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Nachrichten jetzt – die einzige weiterhin KI-vertonte Ansage im Live-Workflow */}
