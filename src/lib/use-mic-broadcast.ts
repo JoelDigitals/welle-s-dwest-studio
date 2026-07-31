@@ -9,6 +9,10 @@ installLameGlobals();
 /** Sendeintervall der MP3-Chunks zum Server – klein genug für echtes Live-Gefühl, groß genug,
  *  um nicht bei jedem winzigen Encoder-Aufruf einen eigenen HTTP-Request zu feuern. */
 const CHUNK_MS = 300;
+/** Lautstärke des Musik-Beds, während darüber gesprochen wird (Talkover-Ducking). */
+const BED_DUCK = 0.15;
+/** Lautstärke des Musik-Beds, sobald die Moderation aufhört zu sprechen (Musik wieder voll). */
+const BED_FULL = 1.0;
 
 /**
  * Nimmt das Mikrofon im Browser auf, kodiert es live zu MP3 (lamejs, reines JS – kein Server-
@@ -18,6 +22,12 @@ const CHUNK_MS = 300;
  * rein kosmetische VU-Meter in use-radio-engine.ts, hier aber am echten Sende-Signal) sowie
  * sentBytes/lastError, damit im Studio sichtbar ist, ob wirklich Daten rausgehen – ohne das gäbe
  * es keine Rückmeldung, falls z. B. die Berechtigung verweigert wurde oder der Upload fehlschlägt.
+ *
+ * Optional lässt sich ein "Bed" (Musik) unterlegen: der Browser mixt Mic + geducktes Musik-Bed
+ * live zusammen und sendet die Mischung als einen Stereo-MP3-Stream – echte Talkover, ohne dass
+ * der Server zwei Streams mischen müsste (der Server reicht die gemischten Bytes des Mic-Elements
+ * einfach weiter wie immer). Der Duck-Regler hebt das Bed von „leise (drunter sprechen)" auf
+ * „voll (Musik wieder laut)" – klassisches Radio-Intro-Talkover.
  */
 export function useMicBroadcast() {
   const [active, setActive] = useState(false);
@@ -32,6 +42,10 @@ export function useMicBroadcast() {
   // auf das tatsächlich gesendete Signal als auch auf die Pegelanzeige, damit der Bediener direkt
   // sieht, wie laut es beim Hörer ankommt.
   const [gain, setGainState] = useState(1);
+  const [bedActive, setBedActive] = useState(false);
+  const [bedTitle, setBedTitle] = useState("");
+  const [duck, setDuckState] = useState(true);
+  const [bedLoading, setBedLoading] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -44,6 +58,13 @@ export function useMicBroadcast() {
   // Ref statt nur State, damit der onaudioprocess-Handler (der bei jedem Audio-Block läuft, nicht
   // bei jedem Render) den aktuellen Stumm-Zustand sofort sieht, ohne den Handler neu zu binden.
   const mutedRef = useRef(false);
+  // Bed-Knoten (Musik-Unterlegung für Talkover): ein AudioBufferSourceNode + eigenen Gain-Knoten,
+  // der den Duck-Zustand regelt. Diese Refs werden bei attachBed gesetzt und bei stop/detach sau-
+  // ber getrennt, damit das Bed nicht unbeabsichtigt weiterläuft.
+  const bedSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const bedGainRef = useRef<GainNode | null>(null);
+  const bedEndedRef = useRef<(() => void) | null>(null);
+  const duckRef = useRef(true);
 
   const setGain = useCallback((value: number) => {
     setGainState(value);
@@ -61,6 +82,18 @@ export function useMicBroadcast() {
   const setMuted = useCallback((value: boolean) => {
     mutedRef.current = value;
     setMutedState(value);
+  }, []);
+
+  const setDuck = useCallback((value: boolean) => {
+    setDuckState(value);
+    duckRef.current = value;
+    if (bedGainRef.current && ctxRef.current) {
+      bedGainRef.current.gain.setTargetAtTime(
+        value ? BED_DUCK : BED_FULL,
+        ctxRef.current.currentTime,
+        0.2,
+      );
+    }
   }, []);
 
   const sendPending = useCallback(() => {
@@ -91,6 +124,34 @@ export function useMicBroadcast() {
       .catch(() => setError("Verbindung zum Server unterbrochen – Mikrofon sendet gerade nicht."));
   }, []);
 
+  const detachBed = useCallback(() => {
+    if (bedSourceRef.current) {
+      try {
+        bedSourceRef.current.onended = null;
+        bedSourceRef.current.stop();
+      } catch {
+        /* schon beendet */
+      }
+      try {
+        bedSourceRef.current.disconnect();
+      } catch {
+        /* ignoriert */
+      }
+      bedSourceRef.current = null;
+    }
+    if (bedGainRef.current) {
+      try {
+        bedGainRef.current.disconnect();
+      } catch {
+        /* ignoriert */
+      }
+      bedGainRef.current = null;
+    }
+    bedEndedRef.current = null;
+    setBedActive(false);
+    setBedTitle("");
+  }, []);
+
   const stop = useCallback(() => {
     if (flushTimerRef.current) {
       clearInterval(flushTimerRef.current);
@@ -103,6 +164,7 @@ export function useMicBroadcast() {
       sendPending();
       encoderRef.current = null;
     }
+    detachBed();
     processorRef.current?.disconnect();
     processorRef.current = null;
     gainNodeRef.current = null;
@@ -114,9 +176,64 @@ export function useMicBroadcast() {
     setActive(false);
     setLevel(0);
     setSentBytes(0);
+    setDuckState(true);
+    duckRef.current = true;
     mutedRef.current = false;
     setMutedState(false);
-  }, [sendPending]);
+  }, [detachBed, sendPending]);
+
+  /**
+   * Unterlegt ein Musik-Bed (Talkover): lädt die Audiodaten, dekodiert sie im AudioContext
+   * (gleiche Sample-Rate wie das Mic – kein Resampling nötig) und spielt sie über einen eigenen
+   * Gain-Knoten geduckt neben dem Mic in den Encoder. Die gemischten Stereo-Bytes landen wie das
+   * reine Mic auch über /api/mic-stream im Livestream – der Server mischt nichts, er reicht die
+   * fertige Mischung einfach weiter. offsetSec startet das Bed z. B. ab dem Intro (Standard 0).
+   * onEnded wird gerufen, sobald das Bed zu Ende ist (z. B. um das Mic-Element automatisch zu
+   * beenden, damit die Engine zum nächsten Element weiterspringt).
+   */
+  const loadBed = useCallback(
+    async (src: string, title: string, offsetSec = 0, onEnded?: () => void) => {
+      const ctx = ctxRef.current;
+      if (!ctx || !processorRef.current) {
+        setError("Mikrofon muss gestartet sein, bevor ein Bed unterlegt wird.");
+        return;
+      }
+      setBedLoading(true);
+      try {
+        const res = await fetch(src);
+        if (!res.ok) throw new Error(`Bed nicht ladbar (${res.status})`);
+        const arr = await res.arrayBuffer();
+        const buffer = await ctx.decodeAudioData(arr);
+        // Altes Bed sicher entfernen, falls schon eines läuft.
+        detachBed();
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        const bedGain = ctx.createGain();
+        bedGain.gain.value = duckRef.current ? BED_DUCK : BED_FULL;
+        source.connect(bedGain);
+        bedGain.connect(processorRef.current);
+        bedSourceRef.current = source;
+        bedGainRef.current = bedGain;
+        bedEndedRef.current = onEnded ?? null;
+        source.onended = () => {
+          detachBed();
+          bedEndedRef.current?.();
+        };
+        source.start(0, Math.min(offsetSec, buffer.duration - 0.1));
+        setBedTitle(title);
+        setBedActive(true);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? `Musik-Bed konnte nicht geladen werden – ${err.message}`
+            : "Musik-Bed konnte nicht geladen werden.",
+        );
+      } finally {
+        setBedLoading(false);
+      }
+    },
+    [detachBed],
+  );
 
   const start = useCallback(async () => {
     if (active) return;
@@ -151,6 +268,8 @@ export function useMicBroadcast() {
       gainNodeRef.current = gainNode;
       source.connect(gainNode);
 
+      // Pegelanzeige am reinen Mic-Signal (unabhängig vom Bed) – so zeigt der VU-Meter die Stimme
+      // und nicht das mitgemischte Musik-Bed.
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       gainNode.connect(analyser);
@@ -164,30 +283,40 @@ export function useMicBroadcast() {
       };
       meterLoop();
 
-      const encoder = new Mp3Encoder(1, ctx.sampleRate, 96);
+      // Stereo-Encoder: das Mic (mono) liegt gleichermaßen auf beiden Kanälen, das optionale Bed
+      // (meist Stereo) kommt geduckt dazu – so entsteht ein echter Stereo-Mix statt eines dumpfen
+      // Mono-Signals, Musik klingt auch im Talkover-Bed akzeptabel.
+      const encoder = new Mp3Encoder(2, ctx.sampleRate, 128);
       encoderRef.current = encoder;
 
       // ScriptProcessorNode ist veraltet, aber (noch) überall unterstützt – ein AudioWorklet wäre
       // hier nur unnötige Zusatzkomplexität. Trotzdem defensiv prüfen: falls ein Browser die
       // Methode doch einmal entfernt hat, soll das eine klare Meldung geben statt eines rohen
-      // "is not a function"-Absturzes.
+      // "is not a function"-Absturzes. 2 Eingangs-/Ausgangskanäle für Stereo (Mic + Bed-Mix).
       if (typeof ctx.createScriptProcessor !== "function") {
         throw new Error("Dieser Browser unterstützt die benötigte Audio-Verarbeitung nicht mehr.");
       }
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      const processor = ctx.createScriptProcessor(4096, 2, 2);
       processorRef.current = processor;
       processor.onaudioprocess = (e) => {
-        const input = e.inputBuffer.getChannelData(0);
+        const input = e.inputBuffer;
+        const ch0 = input.getChannelData(0);
+        const ch1 = input.numberOfChannels > 1 ? input.getChannelData(1) : ch0;
         // WICHTIG: ScriptProcessorNode liefert von sich aus NUR Stille am Ausgang – ohne dieses
         // Kopieren des Eingangs in den Ausgangspuffer bliebe das Selbst-Mithören (monitorNode)
         // immer stumm, egal wie hoch dessen Gain steht (Eingang und Ausgang sind getrennte Puffer).
-        e.outputBuffer.getChannelData(0).set(input);
-        const samples = new Int16Array(input.length);
-        for (let i = 0; i < input.length; i++) {
-          const s = Math.max(-1, Math.min(1, input[i]));
-          samples[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        e.outputBuffer.getChannelData(0).set(ch0);
+        if (e.outputBuffer.numberOfChannels > 1) e.outputBuffer.getChannelData(1).set(ch1);
+        const samples0 = new Int16Array(ch0.length);
+        const samples1 = new Int16Array(ch1.length);
+        for (let i = 0; i < ch0.length; i++) {
+          const s0 = Math.max(-1, Math.min(1, ch0[i]));
+          samples0[i] = s0 < 0 ? s0 * 0x8000 : s0 * 0x7fff;
+          const v1 = ch1[i] ?? ch0[i];
+          const s1 = Math.max(-1, Math.min(1, v1));
+          samples1[i] = s1 < 0 ? s1 * 0x8000 : s1 * 0x7fff;
         }
-        const encoded = encoder.encodeBuffer(samples);
+        const encoded = encoder.encodeBuffer(samples0, samples1);
         if (encoded.length > 0 && !mutedRef.current) pendingRef.current.push(encoded);
       };
       gainNode.connect(processor);
@@ -231,7 +360,7 @@ export function useMicBroadcast() {
     }
   }, [active, gain, monitor, sendPending]);
 
-  useEffect(() => () => stop(), [stop]);
+  useEffect(() => () => void stop(), [stop]);
 
   return {
     active,
@@ -246,5 +375,13 @@ export function useMicBroadcast() {
     error,
     start,
     stop,
+    // Talkover-Bed
+    bedActive,
+    bedTitle,
+    bedLoading,
+    duck,
+    setDuck,
+    loadBed,
+    detachBed,
   };
 }

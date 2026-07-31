@@ -188,6 +188,29 @@ export function LivePanel(props: Props) {
     }
   };
 
+  // Talkover: Musik-Titel wird im Browser geduckt unter die Stimme gelegt und Mic+Bed gemischt
+  // als Stereo-Stream an /api/mic-stream gesendet (der Server reicht die Mischung weiter). Das
+  // Lied läuft NICHT im serverseitigen Plan, sondern wird komplett vom Studio ausgesteuert – sobald
+  // es endet, wird das Mic-Element beendet und die Engine springt weiter.
+  const startTalkover = async (m: MediaRecord) => {
+    if (!mic.active) await mic.start();
+    const src = m.blob ? URL.createObjectURL(m.blob) : m.streamUrl;
+    if (!src) {
+      return;
+    }
+    mic.setDuck(true);
+    await mic.loadBed(src, m.title, 0, () => {
+      mic.stop();
+      if (micLive) props.skip();
+    });
+    props.playNow({
+      kind: "mic",
+      title: `Talkover: ${m.title}`,
+      subtitle: `${me?.displayName ?? "Live"} · über Musik`,
+      duration: Math.max(30, m.duration || 180),
+    });
+  };
+
   const createShow = async () => {
     if (!showTitle.trim() || !showAt || !me) return;
     const startAt = new Date(showAt).getTime();
@@ -498,6 +521,15 @@ export function LivePanel(props: Props) {
                     <Button size="sm" variant="ghost" onClick={() => props.cueNext(fromMedia(t))}>
                       Cue
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={mic.bedLoading}
+                      title="Titel geduckt unter die Stimme legen (Musik duckt, Mic darüber)"
+                      onClick={() => void startTalkover(t)}
+                    >
+                      {mic.bedLoading ? "…" : "Talkover"}
+                    </Button>
                     <Button size="sm" onClick={() => props.playNow(fromMedia(t))}>
                       Play
                     </Button>
@@ -593,6 +625,19 @@ export function LivePanel(props: Props) {
               >
                 {mic.monitor ? "Mithören (an)" : "Über Kopfhörer mithören"}
               </Button>
+            )}
+            {mic.active && mic.bedActive && (
+              <Button
+                size="sm"
+                variant={mic.duck ? "secondary" : "outline"}
+                title="Musik unter der Stimme leiser (Talkover) oder wieder voll laut."
+                onClick={() => mic.setDuck(!mic.duck)}
+              >
+                {mic.duck ? "Musik leiser" : "Musik laut"}
+              </Button>
+            )}
+            {mic.active && mic.bedActive && (
+              <span className="truncate text-xs text-muted-foreground">Bed: {mic.bedTitle}</span>
             )}
             {mic.active && (
               <span
