@@ -318,6 +318,7 @@ function Index() {
               media={library.media}
               traffic={traffic}
               news={news}
+              hotline={hotline}
             />
           </TabsContent>
 

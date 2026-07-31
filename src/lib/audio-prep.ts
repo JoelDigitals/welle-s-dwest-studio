@@ -39,6 +39,29 @@ async function humanizeModeration(text: string, hostName?: string): Promise<stri
 }
 
 /**
+ * Verkehrsblöcke (offizielle Feed-Meldungen und Hörer-Hinweise aus der Hotline) werden wie die
+ * Moderation vor der Sprachausgabe geglättet – aber mit dem faktentreuen Verkehrsfunk-Prompt
+ * (Straßen, Orte und Angaben bleiben exakt). Schlägt das fehl, wird der Original-Text gesprochen.
+ */
+async function humanizeTraffic(text: string): Promise<string> {
+  try {
+    const res = await fetch("/api/script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "Verkehr (faktengetreu umformulieren)",
+        brief: text,
+      }),
+    });
+    if (!res.ok) return text;
+    const data = (await res.json().catch(() => null)) as { text?: string } | null;
+    return data?.text?.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
+/**
  * Erzeugt bzw. lädt das Audio eines Plan-Elements.
  * Sprechtexte werden einmal generiert und 48 Stunden lang wiederverwendet.
  */
@@ -79,7 +102,11 @@ export async function prepareItem(item: PlanItem): Promise<PrepResult> {
   if (cached) return { audioUrl: urlFor(`t:${hash}`, cached.blob), fromCache: true };
 
   const spokenText =
-    item.kind === "moderation" ? await humanizeModeration(text, item.hostName) : text;
+    item.kind === "moderation"
+      ? await humanizeModeration(text, item.hostName)
+      : item.kind === "traffic"
+        ? await humanizeTraffic(text)
+        : text;
 
   const res = await fetch("/api/tts", {
     method: "POST",

@@ -1,4 +1,5 @@
 import { isRegionalTraffic } from "@/lib/autobahn-exits";
+import { fetchTrafficRss } from "./fetch-traffic-rss";
 
 /** fetch mit Timeout – ein einzelner hängender Endpunkt darf die Engine nie für immer blockieren. */
 async function fetchWithTimeout(url: string, ms: number, init?: RequestInit) {
@@ -53,6 +54,22 @@ export type TrafficResult = {
   errors: Array<{ road: string; error: string }>;
 };
 
+/** True, wenn zwei Meldungen offenbar dieselbe Lage beschreiben (gleiche Straße UND gleiche
+ *  Orts-/Abschnittsangabe) – verhindert, dass ein Vorfall doppelt vorgelesen wird (erst aus der
+ *  offiziellen Autobahn-API, dann aus einem RSS-Artikel über denselben Vorfall). */
+function sameLocation(road: string, text: string, other: TrafficResult["items"][number]): boolean {
+  const key = road.replace(/\s+/g, "").toUpperCase();
+  const otherRoad = other.road.replace(/\s+/g, "").toUpperCase();
+  if (!key || key !== otherRoad) return false;
+  // Bekannte Orts-/Abschnittswörter aus beiden Texten: wenn mindestens eines übereinstimmt,
+  // ist es praktisch dieselbe Lage.
+  const own =
+    text.match(/(?:zwischen\s+)?([A-ZÄÖÜ][\wäöüß.-]+(?:\s(?:und\s)?[A-ZÄÖÜ][\wäöüß.-]+){0,3})/g) ??
+    [];
+  const otherText = `${other.headline} ${other.message}`;
+  return own.some((w) => w.length >= 3 && otherText.includes(w));
+}
+
 export async function fetchTraffic(): Promise<TrafficResult> {
   const jobs = (Object.keys(ROADS) as Array<keyof typeof ROADS>).flatMap((region) =>
     ROADS[region].map(async (road) => {
@@ -100,12 +117,30 @@ export async function fetchTraffic(): Promise<TrafficResult> {
     }),
   );
 
-  const results = await Promise.all(jobs);
+  // RSS-Feeds (SWR, Google-News) als zweite Quelle parallel abrufen – deckt auch Bundesstraßen
+  // und lokale Lagen ab, die die offizielle Autobahn-API nicht führt.
+  const [results, rss] = await Promise.all([
+    Promise.all(jobs),
+    fetchTrafficRss().catch(() => ({ items: [] as TrafficResult["items"], errors: [] })),
+  ]);
+
+  const apiItems = results.flatMap((r) => r.items).filter((i) => i.message || i.headline);
+  // RSS-Artikel nur übernehmen, wenn sie nicht dieselbe Lage wie eine API-Meldung beschreiben.
+  const merged = [
+    ...apiItems,
+    ...rss.items.filter(
+      (i) => !apiItems.some((api) => sameLocation(i.road, `${i.headline} ${i.message}`, api)),
+    ),
+  ];
+
   return {
     fetchedAt: new Date().toISOString(),
-    items: results.flatMap((r) => r.items).filter((i) => i.message || i.headline),
-    errors: results
-      .filter((r): r is typeof r & { error: string } => Boolean(r.error))
-      .map((r) => ({ road: r.road, error: r.error })),
+    items: merged,
+    errors: [
+      ...results
+        .filter((r): r is typeof r & { error: string } => Boolean(r.error))
+        .map((r) => ({ road: r.road, error: r.error })),
+      ...rss.errors.map((r) => ({ road: r.source, error: r.error })),
+    ],
   };
 }

@@ -23,6 +23,7 @@ import {
   tryHumanizeCorrespondentReport,
   tryGenerateDailyTheme,
   tryHumanizeHotlineMix,
+  tryHumanizeTraffic,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
@@ -289,7 +290,9 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
 function trimToAudio(raw: Buffer, fallbackDuration: number): { buffer: Buffer; duration: number } {
   const { audioStart, audioEnd, durationSeconds } = analyzeMp3(raw);
   const buffer =
-    audioStart > 0 || audioEnd < raw.length ? raw.subarray(audioStart, audioEnd || raw.length) : raw;
+    audioStart > 0 || audioEnd < raw.length
+      ? raw.subarray(audioStart, audioEnd || raw.length)
+      : raw;
   return { buffer, duration: durationSeconds > 0.5 ? durationSeconds : fallbackDuration };
 }
 
@@ -319,8 +322,10 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
   // Moderation und Senderkennungen werden frei (um)formuliert (dürfen neue Formulierungen/Ideen
   // einbringen). Nachrichten werden nur sprachlich geglättet (nie Fakten ändern) – vorher klangen
   // Schlagzeilen roh vorgelesen wie eine Aufzählung statt wie ein echter Nachrichtensprecher.
-  // Verkehr/Wetter/Werbung bleiben unverändert (Wetter/Werbung sind schon eigene generierte
-  // Texte, Verkehr enthält sicherheitsrelevante Angaben, die exakt bleiben sollen).
+  // Der Verkehrsblock (mit offiziellen Meldungen UND Hörer-Hinweisen aus der Hotline) wird mit
+  // dem faktentreuen Verkehrsfunk-Prompt geglättet: Straßen, Orte und Angaben bleiben exakt,
+  // nur die Formulierung klingt wie ein echter Verkehrsfunk-Moderator statt wie eine rohe Liste.
+  // Wetter/Werbung bleiben unverändert (Wetter und Werbung sind schon eigene generierte Texte).
   // Co-Moderator:innen-Einwurf in einer 2er-Show: statt der generischen Umformulierung reagiert
   // die zweite Stimme hier per KI echt auf das Thema, über das der Hauptmoderator gerade
   // gesprochen hat (dialogueTopic), damit ein echtes Gespräch statt zweier Solo-Ansagen entsteht.
@@ -339,7 +344,9 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
                 ? await tryGenerateStationId(text)
                 : item.kind === "news"
                   ? await tryHumanizeNews(text)
-                  : text;
+                  : item.kind === "traffic"
+                    ? await tryHumanizeTraffic(text)
+                    : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste

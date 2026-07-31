@@ -25,7 +25,7 @@ import { useScheduledShows } from "@/lib/use-scheduled-shows";
 import { useMyRecordings } from "@/lib/use-my-recordings";
 import { useAuth } from "@/lib/use-auth";
 import { useMicBroadcast } from "@/lib/use-mic-broadcast";
-import type { PlanItem, TrafficFeedItem, NewsFeedItem } from "@/lib/broadcast-types";
+import type { PlanItem, TrafficFeedItem, NewsFeedItem, HotlineReport } from "@/lib/broadcast-types";
 import type { MediaRecord } from "@/lib/media-db";
 import type { LiveQueueItemInput } from "@/lib/use-live-studio";
 
@@ -41,6 +41,7 @@ type Props = {
   media: MediaRecord[];
   traffic: TrafficFeedItem[];
   news: NewsFeedItem[];
+  hotline: HotlineReport[];
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -150,7 +151,10 @@ export function LivePanel(props: Props) {
 
   const trafficNow = () =>
     speakItem(
-      trafficText({ media: [], news: [], traffic: props.traffic, reports: [] }, Date.now()),
+      trafficText(
+        { media: [], news: [], traffic: props.traffic, reports: [], hotline: props.hotline },
+        Date.now(),
+      ),
       "Verkehr (manuell)",
       "traffic",
     );
@@ -208,7 +212,9 @@ export function LivePanel(props: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <span
             className={`onair-badge inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-bold tracking-widest ${
-              props.liveMode ? "bg-onair text-destructive-foreground" : "bg-muted text-muted-foreground"
+              props.liveMode
+                ? "bg-onair text-destructive-foreground"
+                : "bg-muted text-muted-foreground"
             }`}
           >
             <Radio className="size-4" /> {props.liveMode ? "ON AIR" : "AUTOPILOT"}
@@ -271,9 +277,7 @@ export function LivePanel(props: Props) {
                   dragUid.current = null;
                 }}
                 className={`flex items-center gap-2 rounded-lg border px-3 ${
-                  i === 0
-                    ? "border-signal bg-signal/10 py-3"
-                    : "border-border bg-secondary/40 py-2"
+                  i === 0 ? "border-signal bg-signal/10 py-3" : "border-border bg-secondary/40 py-2"
                 } ${i > 0 ? "cursor-grab" : ""}`}
               >
                 {i > 0 && <GripVertical className="size-4 shrink-0 text-muted-foreground" />}
@@ -382,7 +386,10 @@ export function LivePanel(props: Props) {
                   </div>
                 ))}
                 {SLOGANS.slice(0, 6).map((s, i) => (
-                  <div key={s} className="flex items-center gap-1 rounded-lg border border-border p-1">
+                  <div
+                    key={s}
+                    className="flex items-center gap-1 rounded-lg border border-border p-1"
+                  >
                     <button
                       className="min-w-0 flex-1 truncate px-1 text-left text-xs disabled:opacity-40"
                       onClick={() => props.playNow(speakItem(s, `Slogan ${i + 1}`, "slogan"))}
@@ -405,8 +412,7 @@ export function LivePanel(props: Props) {
             <TabsContent value="recordings" className="space-y-1.5">
               {recordings.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Keine Aufnahmen in der Bibliothek – im Tab „Bibliothek" als „Aufnahme"
-                  hochladen.
+                  Keine Aufnahmen in der Bibliothek – im Tab „Bibliothek" als „Aufnahme" hochladen.
                 </p>
               )}
               <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
@@ -493,15 +499,17 @@ export function LivePanel(props: Props) {
           <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2.5 py-1 text-xs">
             <span className="uppercase tracking-widest text-muted-foreground">Ausgang:</span>
             <span className="font-semibold">
-              {props.liveMode ? (props.queue[0]?.title ?? "Warteschlange leer") : "Autopilot sendet"}
+              {props.liveMode
+                ? (props.queue[0]?.title ?? "Warteschlange leer")
+                : "Autopilot sendet"}
             </span>
           </span>
         </div>
         <p className="text-xs text-muted-foreground">
           Titel, Untertitel und Dauer sind frei wählbar – erscheinen so im Studio, Player & Co. Das
           Mikrofon selbst kann schon vorab getestet werden (Berechtigung erteilen, Pegel/Lautstärke
-          prüfen), bevor das Element wirklich on air ist – gesendet wird erst, sobald "Ausgang"
-          oben wirklich dieses Mikrofon-Element zeigt.
+          prüfen), bevor das Element wirklich on air ist – gesendet wird erst, sobald "Ausgang" oben
+          wirklich dieses Mikrofon-Element zeigt.
         </p>
         <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_0.6fr]">
           <Input
@@ -535,9 +543,7 @@ export function LivePanel(props: Props) {
             Pegel und Lautstärke schon vor dem Livegang geprüft werden können. */}
         <div
           className={`space-y-2 rounded-lg border p-3 ${
-            micLive && mic.active
-              ? "border-onair bg-onair/10"
-              : "border-border bg-secondary/40"
+            micLive && mic.active ? "border-onair bg-onair/10" : "border-border bg-secondary/40"
           }`}
         >
           <div className="flex flex-wrap items-center gap-3">
@@ -604,7 +610,8 @@ export function LivePanel(props: Props) {
           {mic.active && (
             <p className="text-xs text-muted-foreground">
               Gesendet: {(mic.sentBytes / 1024).toFixed(1)} KB
-              {mic.sentBytes === 0 && " – noch keine Bytes raus, kurz warten oder ins Mikrofon sprechen"}
+              {mic.sentBytes === 0 &&
+                " – noch keine Bytes raus, kurz warten oder ins Mikrofon sprechen"}
             </p>
           )}
           {mic.error && <p className="text-xs text-destructive">{mic.error}</p>}
@@ -661,8 +668,8 @@ export function LivePanel(props: Props) {
             <CollapsibleContent className="space-y-3">
               <p className="text-xs text-muted-foreground">
                 Für echte Livesendungen bitte keine KI-Texte verwenden – nur Musik, Jingles,
-                Aufnahmen und Nachrichten. Diese freie KI-Ansage ist nur für Notfälle gedacht
-                (z. B. eine technische Störungsmeldung, wenn niemand live spricht).
+                Aufnahmen und Nachrichten. Diese freie KI-Ansage ist nur für Notfälle gedacht (z. B.
+                eine technische Störungsmeldung, wenn niemand live spricht).
               </p>
               <Textarea
                 rows={3}

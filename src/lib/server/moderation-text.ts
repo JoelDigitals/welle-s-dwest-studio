@@ -317,3 +317,31 @@ export async function tryHumanizeHotlineMix(text: string, hostName?: string): Pr
     return text;
   }
 }
+
+/** Verkehrsblock: wie bei den Nachrichten dürfen die Fakten (Straße, Ort, Richtung, Ursache,
+ *  Staulänge, Dauer) NIEMALS erfunden oder verändert werden – die Formulierung soll aber flüssig
+ *  und lebendig klingen statt wie eine roh aneinandergereihte Meldungsliste. Das gilt sowohl für
+ *  die offiziellen Feed-Meldungen als auch für Hörer-Hinweise aus der Hotline: aus einer
+ *  stichpunktartigen Hörermeldung ("A8 bei St. Ingbert, 3km Stau") wird ein natürlich
+ *  gesprochener Satz, ohne dass der Inhalt erfunden wird. */
+const TRAFFIC_SYSTEM = `Du bist Moderator:in und Verkehrsfunk-Sprecher:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz).
+Du bekommst einen fertigen Verkehrsblock (offizielle Meldungen und/oder Hörer-Hinweise). Verändere NIEMALS Fakten: Straßen, Orte, Fahrtrichtungen, Ursachen (Stau, Unfall, Baustelle, Sperrung), Staulängen, Zeitangaben und Minuten dürfen nicht erfunden, weggelassen oder geändert werden.
+Wandle die rohe Meldungsliste in flüssig gesprochene, natürliche Sätze um, so wie ein echter Verkehrsfunk-Moderator spricht – mit normaler Satzmelodie, nicht wie eine Aufzählung oder ein abgelesener Polizeibericht.
+Hörer-Hinweise (aus der Hörer-Hotline) müssen als Hinweise von Hörer:innen erkennbar bleiben ("Ein Hörer meldet ...", "Aus der Hörer-Hotline erreicht uns ...") und dürfen nicht als offizielle Meldung klingen.
+Halte dich an die vorgegebene Reihenfolge, kürze nichts weg und füge keine neuen Meldungen oder Orte hinzu.
+Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
+
+/** Wie tryHumanizeNews, aber mit dem faktentreuen Verkehrsfunk-Prompt. */
+export async function tryHumanizeTraffic(text: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: TRAFFIC_SYSTEM,
+      user: text,
+      temperature: 0.7,
+      topP: 0.9,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}

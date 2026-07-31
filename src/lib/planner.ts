@@ -14,7 +14,7 @@ import {
 } from "./radio-config";
 import { SLOGANS } from "./radio-data";
 import type { MediaRecord } from "./media-db";
-import type { FreeTrack, ItemKind, PlanContext, PlanItem } from "./broadcast-types";
+import type { FreeTrack, HotlineReport, ItemKind, PlanContext, PlanItem } from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
 import { exactSection } from "./autobahn-exits";
 import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
@@ -345,12 +345,43 @@ function trafficLine(
   );
 }
 
+/** Straßenname normalisiert (Leerzeichen raus, Großbuchstaben) – für den Feed-/Hörer-Abgleich. */
+function roadKeyOf(road: string | undefined): string {
+  return (road ?? "").replace(/\s+/g, "").toUpperCase();
+}
+
+/** True, wenn der Ort/die Stelle eines Hörer-Hinweises schon in einer Feed-Meldung vorkommt –
+ *  verhindert, dass dieselbe Lage doppelt vorgelesen wird (erst offiziell, dann als Hörer). */
+function placeHits(h: HotlineReport, feedText: string): boolean {
+  const hay = feedText.toLowerCase();
+  const loc = [h.place, h.road].filter((v) => v && v.length >= 3);
+  return loc.some((v) => hay.includes(v.toLowerCase()));
+}
+
+/** Einstiegssatz vor den Hörer-Verkehrsmeldungen im Verkehrsblock – wie im echten Radio klar als
+ *  Hinweis von Hörerinnen und Hörern benannt, statt wie eine offizielle Meldung getarnt. */
+const LISTENER_LEAD = [
+  "Und das haben uns Hörerinnen und Hörer gerade gemeldet:",
+  "Dazu erreichte uns gerade ein Hinweis aus der Hörer-Hotline:",
+  "Und noch etwas aus der Hörer-Hotline:",
+  "Auch das meldeten uns Hörerinnen und Hörer gerade:",
+];
+
+/** Eine Verkehrs-Hörermeldung wird genauso natürlich formuliert wie die offiziellen Feed-Meldungen
+ *  (Straße, Stelle, Grund, Staulänge) statt 1:1 vom Eingabetext übernommen – Ort/Straße kommen aus
+ *  den strukturierten Feldern, der Rest läuft durch dieselben Verkehrs-Heuristiken wie der Feed. */
+function listenerTrafficLine(h: HotlineReport, index: number): string {
+  const message = cleanTraffic(`${h.place ? `bei ${h.place} ` : ""}${h.message ?? ""}`);
+  return trafficLine({ road: h.road ?? "", headline: "", message }, index);
+}
 /**
- * Ein gemeinsamer Verkehrsblock für Saarland und Rheinland-Pfalz –
- * nur wirklich relevante Meldungen, mit Grund und Zeitverlust.
+ * Ein gemeinsamer Verkehrsblock für Saarland und Rheinland-Pfalz – offizielle Feed-Meldungen UND
+ * frische Hörer-Verkehrsmeldungen aus der Hotline werden zusammen berücksichtigt: nur wirklich
+ * relevante Lagen, Wichtiges zuerst, ohne Doppelmeldungen (ein Hörer-Hinweis zur selben Straße und
+ * Stelle, die der Feed schon nennt, wird nicht ein zweites Mal vorgelesen).
  */
 export function trafficText(ctx: PlanContext, at: number) {
-  const relevant = ctx.traffic
+  const feedRelevant = ctx.traffic
     .filter((t) => {
       const s = `${t.headline} ${t.message}`;
       return URGENT.test(s) || RELEVANT.test(s);
@@ -360,13 +391,33 @@ export function trafficText(ctx: PlanContext, at: number) {
       const ub = URGENT.test(`${b.headline} ${b.message}`) ? 0 : 1;
       return ua - ub;
     })
-    .slice(0, 5);
+    .slice(0, 4);
 
-  const lines = relevant.map((t, i) => trafficLine(t, i));
+  // Hörer-Verkehrsmeldungen aus der Hotline: nur echte Lagen, nicht schon durch den Feed abgedeckt.
+  const hotline = freshHotline(ctx)
+    .filter((h) => h.type === "verkehr")
+    .filter((h) => {
+      const s = `${h.road ?? ""} ${h.place ?? ""} ${h.message ?? ""}`;
+      return URGENT.test(s) || RELEVANT.test(s);
+    })
+    .filter(
+      (h) =>
+        !feedRelevant.some(
+          (t) =>
+            roadKeyOf(t.road) === roadKeyOf(h.road) && placeHits(h, `${t.headline} ${t.message}`),
+        ),
+    )
+    .slice(0, 3);
+
+  const feedLines = feedRelevant.map((t, i) => trafficLine(t, i));
+  const hotlineLines = hotline.map((h, i) => listenerTrafficLine(h, i + feedRelevant.length));
+  const seed = berlinMinute(at) + feedRelevant.length;
+  const lines = hotlineLines.length
+    ? [...feedLines, `${pick(LISTENER_LEAD, seed)} ${hotlineLines.join(" ")}`]
+    : feedLines;
   const body = lines.length
     ? lines.join(" ")
     : "Auf den Autobahnen im Saarland und in Rheinland-Pfalz läuft der Verkehr zur Zeit störungsfrei. Keine größeren Behinderungen gemeldet.";
-  const seed = berlinMinute(at) + relevant.length;
   const intro = pick(
     [
       `${spokenTime(at)}, der Verkehr für das Saarland und Rheinland-Pfalz.`,
@@ -384,7 +435,7 @@ export function trafficText(ctx: PlanContext, at: number) {
     ],
     seed + 1,
   );
-  return clean(`${intro} ${body} ${listenerLines(ctx)} ${outro}`);
+  return clean(`${intro} ${body} ${outro}`);
 }
 
 /** Lesbare Bezeichnung je Hotline-Meldungsart – für pushHotlineMix (Rohmaterial für die KI). */
@@ -402,20 +453,6 @@ const HOTLINE_TYPE_LABEL: Record<string, string> = {
 function freshHotline(ctx: PlanContext) {
   const now = Date.now();
   return (ctx.hotline ?? []).filter((h) => now - h.createdAt < 6 * 3600_000);
-}
-
-/** Verkehrs-Hörermeldungen im Sprechtext. */
-function listenerLines(ctx: PlanContext) {
-  const list = freshHotline(ctx)
-    .filter((h) => h.type === "verkehr")
-    .slice(0, 3);
-  if (!list.length) return "";
-  const lines = list.map((h) =>
-    clean(
-      `${h.road ? `Auf der ${h.road} ` : ""}${h.place ? `bei ${h.place}` : "in der Region"}: ${endWithDot(h.message)}`,
-    ),
-  );
-  return `Und das haben uns Hörerinnen und Hörer gerade gemeldet. ${lines.join(" ")}`;
 }
 
 /** Wetter-Hörermeldungen (1-2) für den Wetterblock – passend zum Thema, nicht generisch verstreut. */
@@ -475,13 +512,7 @@ export function urgentText(ctx: PlanContext) {
   });
   const callerLines = callers
     .slice(0, 2)
-    .map((h) =>
-      clean(
-        `Von einer Hörermeldung: ${h.road ? `Auf der ${h.road} ` : ""}${
-          h.place ? `bei ${h.place}` : "in der Region"
-        } ${endWithDot(h.message)}`,
-      ),
-    );
+    .map((h) => clean(`Von einer Hörermeldung: ${listenerTrafficLine(h, 0)}`));
   return `Eine wichtige Meldung für die Region. ${[...lines, ...callerLines].join(" ")} Bitte fahren Sie besonders vorsichtig.`;
 }
 
@@ -1358,7 +1389,12 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           "Wetter",
           sponsor ? `präsentiert von ${sponsor.name}` : `mit ${expert.name}`,
           weatherText(expert, cursor, outlook, ctx),
-          { sponsor: sponsor?.name ?? null, voice: expert.voice, hostId: expert.id, hostName: expert.name },
+          {
+            sponsor: sponsor?.name ?? null,
+            voice: expert.voice,
+            hostId: expert.id,
+            hostName: expert.name,
+          },
         );
         return;
       }
@@ -1373,7 +1409,12 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         "Wetter",
         sponsor ? `präsentiert von ${sponsor.name}` : `mit ${expert.name}`,
         weatherText(expert, cursor, outlook, ctx),
-        { sponsor: sponsor?.name ?? null, voice: expert.voice, hostId: expert.id, hostName: expert.name },
+        {
+          sponsor: sponsor?.name ?? null,
+          voice: expert.voice,
+          hostId: expert.id,
+          hostName: expert.name,
+        },
       );
     };
 
@@ -1430,7 +1471,13 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     const pushHotlineMix = () => {
       const list = freshHotline(ctx)
         .filter((h) => !hotlineAnnouncedThisPlan.has(h.id))
-        .filter((h) => h.type === "gruss" || h.type === "musikwunsch" || h.type === "lob_kritik" || h.type === "sonstiges")
+        .filter(
+          (h) =>
+            h.type === "gruss" ||
+            h.type === "musikwunsch" ||
+            h.type === "lob_kritik" ||
+            h.type === "sonstiges",
+        )
         // Älteste zuerst (fair in Reihenfolge des Eingangs), höchstens 4 pro Segment – sonst
         // würde ein einzelnes Segment bei vielen Meldungen unnötig lang und unübersichtlich.
         .sort((a, b) => a.createdAt - b.createdAt)
@@ -1438,7 +1485,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       if (!list.length) return false;
       generalIndex++;
       const raw = list
-        .map((h) => `${HOTLINE_TYPE_LABEL[h.type]}${h.caller ? ` von ${h.caller}` : ""}: ${h.message}`)
+        .map(
+          (h) => `${HOTLINE_TYPE_LABEL[h.type]}${h.caller ? ` von ${h.caller}` : ""}: ${h.message}`,
+        )
         .join("\n");
       speak(
         "moderation",
@@ -1468,10 +1517,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       const first = push(
         {
           kind: "news",
-          title:
-            mode === "full"
-              ? `Nachrichten — Anmoderation`
-              : `Kurznachrichten — Anmoderation`,
+          title: mode === "full" ? `Nachrichten — Anmoderation` : `Kurznachrichten — Anmoderation`,
           subtitle: `${clockLine(at)} Uhr · Themen`,
           duration: speakDuration(intro),
           text: intro,

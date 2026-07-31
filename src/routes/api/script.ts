@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AiError } from "@/lib/ai-text";
-import { generateModerationText } from "@/lib/server/moderation-text";
+import { generateModerationText, tryHumanizeTraffic } from "@/lib/server/moderation-text";
 import { requireAuth } from "@/lib/server/auth";
 
 type Body = {
@@ -28,11 +28,17 @@ export const Route = createFileRoute("/api/script")({
         }
 
         try {
-          const text = await generateModerationText({
-            kind: body.kind,
-            hostName: body.hostName,
-            brief,
-          });
+          // Verkehr wird mit dem faktentreuen Verkehrsfunk-Prompt umformuliert (Straßen/Orte/
+          // Angaben bleiben exakt, nur die Sprachform wird natürlicher) – die freie Moderation
+          // dürfte hier neue Inhalte erfinden, das wäre bei Verkehrsmeldungen falsch.
+          const text =
+            body.kind === "Verkehr (faktengetreu umformulieren)"
+              ? await tryHumanizeTraffic(brief)
+              : await generateModerationText({
+                  kind: body.kind,
+                  hostName: body.hostName,
+                  brief,
+                });
           return Response.json({ text });
         } catch (err) {
           if (err instanceof AiError) {
