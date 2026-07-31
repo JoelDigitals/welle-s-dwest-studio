@@ -16,7 +16,7 @@ import { SLOGANS } from "./radio-data";
 import type { MediaRecord } from "./media-db";
 import type { FreeTrack, HotlineReport, ItemKind, PlanContext, PlanItem } from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
-import { exactSection } from "./autobahn-exits";
+import { exactSection, sectionForPlace } from "./autobahn-exits";
 import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
 
 let counter = 0;
@@ -275,9 +275,12 @@ function directionOf(text: string) {
   return m ? `in Richtung ${m[1]}` : "";
 }
 
-/** Eine natürlich klingende Verkehrsmeldung im Radiostil. */
+/** Eine natürlich klingende Verkehrsmeldung im Radiostil – die Position wird so exakt wie möglich
+ *  genannt: zuerst der explizite Abschnitt aus dem Meldungstext ("zwischen AS A und AS B"), dann
+ *  die Auflösung einer Ortsangabe über die Anschlussstellen-Tabelle (place), erst dann die
+ *  grobe Text-Heuristik. Nur wenn wirklich gar nichts bekannt ist, bleibt "im Streckenverlauf". */
 function trafficLine(
-  item: { road: string; headline: string; message: string },
+  item: { road: string; headline: string; message: string; place?: string },
   index: number,
 ): string {
   const original = cleanTraffic(`${item.headline} ${item.message}`);
@@ -289,8 +292,15 @@ function trafficLine(
     .replace(/\bASt\.?\s+/g, "Ausfahrt ")
     .replace(/\bRi\.\s*/g, "Richtung ");
   const road = item.road?.trim() || "";
-  // Exakter Abschnitt aus der Ausfahrtstabelle, sonst Textanalyse.
-  const where = exactSection(road, original) || exactSection(road, raw) || betweenOf(raw);
+  // Exakter Abschnitt aus der Ausfahrtstabelle, sonst Auflösung der Ortsangabe, sonst Textanalyse.
+  const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
+  const where =
+    exactSection(road, original) ||
+    exactSection(road, raw) ||
+    sectionForPlace(road, item.place ?? "") ||
+    sectionForPlace(road, textPlace) ||
+    betweenOf(raw) ||
+    "im Streckenverlauf";
   const dir = directionOf(raw);
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);
@@ -372,7 +382,10 @@ const LISTENER_LEAD = [
  *  den strukturierten Feldern, der Rest läuft durch dieselben Verkehrs-Heuristiken wie der Feed. */
 function listenerTrafficLine(h: HotlineReport, index: number): string {
   const message = cleanTraffic(`${h.place ? `bei ${h.place} ` : ""}${h.message ?? ""}`);
-  return trafficLine({ road: h.road ?? "", headline: "", message }, index);
+  // place wird zusätzlich strukturiert übergeben, damit die Anschlussstellen-Tabelle daraus den
+  // exakten Abschnitt ("zwischen AS A und AS B") auflösen kann – "bei {place}" im Text dient nur
+  // als Fallback, falls die Ortsangabe zu keiner bekannten Anschlussstelle passt.
+  return trafficLine({ road: h.road ?? "", headline: "", message, place: h.place }, index);
 }
 /**
  * Ein gemeinsamer Verkehrsblock für Saarland und Rheinland-Pfalz – offizielle Feed-Meldungen UND
@@ -1561,7 +1574,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       // Gemeldete Blitzer bekommen einen eigenen, immer hörbaren Block.
       const blitzer = blitzerLine(ctx);
       if (blitzer) {
-        speak("traffic", "Blitzer-Service", `${blitzerCount(ctx)} Hörermeldungen`, blitzer);
+        speak("traffic", "Blitzer-Service", `${blitzerCount(ctx)} Hörermeldungen`, blitzer, {
+          blitzerService: true,
+        });
       }
       // Wichtige Meldungen werden nicht fest eingeplant, sondern nur spontan
       // eingeblendet, wenn eine neue Gefahrenlage hereinkommt.

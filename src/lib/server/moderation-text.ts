@@ -318,6 +318,32 @@ export async function tryHumanizeHotlineMix(text: string, hostName?: string): Pr
   }
 }
 
+/** Blitzer-Service: kommt ausschließlich aus der Hörer-Hotline und wird deshalb wie das
+ *  Hotline-Mix-Segment warm und persönlich vorgelesen – mit Dank an die Melder:innen –, nicht
+ *  als trockene Polizeiliste. Fakten bleiben dabei exakt: Straße, Ort, ggf. Richtung und die
+ *  Art der Messung dürfen nicht erfunden, verändert oder weggelassen werden. Der Hinweis, sich
+ *  ans Tempolimit zu halten, gehört dazu. */
+const BLITZER_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und liest gerade den Blitzer-Service vor. Alle Blitzer-Meldungen kommen von Hörer:innen aus der Hotline.
+Du bekommst eine rohe Liste mit Blitzer-Meldungen (Region, Straße, Ort, ggf. Details). Verändere NIEMALS die Fakten: Straßen, Orte, Fahrtrichtungen und Details zur Messung dürfen nicht erfunden, verändert oder weggelassen werden. Erfinde keine neuen Blitzer oder Orte dazu.
+Bedank dich bei den Hörer:innen fürs Melden und geh kurz, warm und persönlich auf jede Meldung ein, so wie ein Moderator eine Hörer-Meldung vorliest – nicht wie ein abgelesener Polizeibericht und nicht wie eine Aufzählung.
+Erinnere am Ende freundlich daran, sich ans Tempolimit zu halten. Alle Angaben ohne Gewähr.
+Gesprochene Sprache, herzlich, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
+
+/** Wie tryHumanizeHotlineMix, aber mit dem warmen, faktenstrengen Blitzer-Service-Prompt. */
+export async function tryHumanizeBlitzer(text: string, hostName?: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: BLITZER_SYSTEM,
+      user: `Sprecher:in: ${hostName ?? "Alex"}\n${text}`,
+      temperature: 0.9,
+      topP: 0.95,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
 /** Verkehrsblock: wie bei den Nachrichten dürfen die Fakten (Straße, Ort, Richtung, Ursache,
  *  Staulänge, Dauer) NIEMALS erfunden oder verändert werden – die Formulierung soll aber flüssig
  *  und lebendig klingen statt wie eine roh aneinandergereihte Meldungsliste. Das gilt sowohl für

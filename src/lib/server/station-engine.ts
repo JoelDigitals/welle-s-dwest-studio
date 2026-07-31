@@ -24,6 +24,7 @@ import {
   tryGenerateDailyTheme,
   tryHumanizeHotlineMix,
   tryHumanizeTraffic,
+  tryHumanizeBlitzer,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
@@ -344,9 +345,11 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
                 ? await tryGenerateStationId(text)
                 : item.kind === "news"
                   ? await tryHumanizeNews(text)
-                  : item.kind === "traffic"
-                    ? await tryHumanizeTraffic(text)
-                    : text;
+                  : item.kind === "traffic" && item.blitzerService
+                    ? await tryHumanizeBlitzer(text, item.hostName)
+                    : item.kind === "traffic"
+                      ? await tryHumanizeTraffic(text)
+                      : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste

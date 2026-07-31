@@ -6,91 +6,366 @@
  */
 export const AUTOBAHN_EXITS: Record<string, string[]> = {
   A1: [
-    "Kreuz Wittlich", "Salmtal", "Hasborn", "Laufeld", "Wittlich-Mitte", "Mehring",
-    "Schweich", "Trier-Ehrang", "Kreuz Trier", "Reinsfeld", "Hermeskeil", "Nonnweiler",
-    "Nonnweiler-Otzenhausen", "Nonnweiler-Braunshausen", "Tholey", "Eppelborn",
-    "Illingen", "Kreuz Neunkirchen", "Neunkirchen-Kohlhof", "Kreuz Saarbrücken",
+    "Kreuz Wittlich",
+    "Salmtal",
+    "Hasborn",
+    "Laufeld",
+    "Wittlich-Mitte",
+    "Mehring",
+    "Schweich",
+    "Trier-Ehrang",
+    "Kreuz Trier",
+    "Reinsfeld",
+    "Hermeskeil",
+    "Nonnweiler",
+    "Nonnweiler-Otzenhausen",
+    "Nonnweiler-Braunshausen",
+    "Tholey",
+    "Eppelborn",
+    "Illingen",
+    "Kreuz Neunkirchen",
+    "Neunkirchen-Kohlhof",
+    "Kreuz Saarbrücken",
   ],
   A6: [
-    "Kreuz Saarbrücken", "Saarbrücken-Fechingen", "Saarbrücken-Brebach", "St. Ingbert-West",
-    "St. Ingbert-Mitte", "Rohrbach", "Homburg", "Bruchmühlbach-Miesau", "Landstuhl-West",
-    "Landstuhl-Ost", "Kreuz Landstuhl", "Ramstein-Miesenbach", "Kaiserslautern-Einsiedlerhof",
-    "Kaiserslautern-West", "Kreuz Kaiserslautern", "Kaiserslautern-Ost", "Enkenbach-Alsenborn",
-    "Sembach", "Wattenheim", "Grünstadt", "Kreuz Frankenthal", "Frankenthal", "Kreuz Mannheim",
+    "Kreuz Saarbrücken",
+    "Saarbrücken-Fechingen",
+    "Saarbrücken-Brebach",
+    "St. Ingbert-West",
+    "St. Ingbert-Mitte",
+    "Rohrbach",
+    "Homburg",
+    "Bruchmühlbach-Miesau",
+    "Landstuhl-West",
+    "Landstuhl-Ost",
+    "Kreuz Landstuhl",
+    "Ramstein-Miesenbach",
+    "Kaiserslautern-Einsiedlerhof",
+    "Kaiserslautern-West",
+    "Kreuz Kaiserslautern",
+    "Kaiserslautern-Ost",
+    "Enkenbach-Alsenborn",
+    "Sembach",
+    "Wattenheim",
+    "Grünstadt",
+    "Kreuz Frankenthal",
+    "Frankenthal",
+    "Kreuz Mannheim",
   ],
   A8: [
-    "Perl-Borg", "Merzig-Schwemlingen", "Merzig", "Merzig-Wellingen", "Beckingen",
-    "Dreieck Saarlouis", "Schwalbach-Hülzweiler", "Heusweiler", "Kreuz Neunkirchen",
-    "Neunkirchen-Wellesweiler", "Homburg-Einöd", "Zweibrücken-Mitte", "Zweibrücken-Ixheim",
+    "Perl-Borg",
+    "Merzig-Schwemlingen",
+    "Merzig",
+    "Merzig-Wellingen",
+    "Beckingen",
+    "Dreieck Saarlouis",
+    "Schwalbach-Hülzweiler",
+    "Heusweiler",
+    "Kreuz Neunkirchen",
+    "Neunkirchen-Wellesweiler",
+    "Homburg-Einöd",
+    "Zweibrücken-Mitte",
+    "Zweibrücken-Ixheim",
     "Pirmasens-Winzeln",
   ],
   A62: [
-    "Nonnweiler", "Freisen", "Kusel", "Glan-Münchweiler", "Bruchmühlbach-Miesau",
-    "Landstuhl-West", "Kreuz Landstuhl", "Trippstadt", "Pirmasens-Nord", "Thaleischweiler-Fröschen",
+    "Nonnweiler",
+    "Freisen",
+    "Kusel",
+    "Glan-Münchweiler",
+    "Bruchmühlbach-Miesau",
+    "Landstuhl-West",
+    "Kreuz Landstuhl",
+    "Trippstadt",
+    "Pirmasens-Nord",
+    "Thaleischweiler-Fröschen",
     "Pirmasens-Zweibrücken",
   ],
   A620: [
-    "Saarlouis-Mitte", "Saarlouis-Ost", "Bous", "Völklingen-Wehrden", "Völklingen-Stadtmitte",
-    "Püttlingen", "Saarbrücken-Klarenthal", "Saarbrücken-Ludwigsberg", "Saarbrücken-Malstatt",
-    "Saarbrücken-Wilhelm-Heinrich-Brücke", "Saarbrücken-Ost", "Kreuz Saarbrücken",
+    "Saarlouis-Mitte",
+    "Saarlouis-Ost",
+    "Bous",
+    "Völklingen-Wehrden",
+    "Völklingen-Stadtmitte",
+    "Püttlingen",
+    "Saarbrücken-Klarenthal",
+    "Saarbrücken-Ludwigsberg",
+    "Saarbrücken-Malstatt",
+    "Saarbrücken-Wilhelm-Heinrich-Brücke",
+    "Saarbrücken-Ost",
+    "Kreuz Saarbrücken",
   ],
   A61: [
-    "Kreuz Meckenheim", "Bad Neuenahr-Ahrweiler", "Sinzig", "Kreuz Koblenz", "Boppard",
-    "Emmelshausen", "Laudert", "Rheinböllen", "Dreieck Nahetal", "Bad Kreuznach",
-    "Gau-Bickelheim", "Kreuz Alzey", "Worms", "Frankenthal", "Kreuz Frankenthal",
-    "Ludwigshafen", "Speyer", "Hockenheim",
+    "Kreuz Meckenheim",
+    "Bad Neuenahr-Ahrweiler",
+    "Sinzig",
+    "Kreuz Koblenz",
+    "Boppard",
+    "Emmelshausen",
+    "Laudert",
+    "Rheinböllen",
+    "Dreieck Nahetal",
+    "Bad Kreuznach",
+    "Gau-Bickelheim",
+    "Kreuz Alzey",
+    "Worms",
+    "Frankenthal",
+    "Kreuz Frankenthal",
+    "Ludwigshafen",
+    "Speyer",
+    "Hockenheim",
   ],
   A63: [
-    "Kreuz Mainz-Süd", "Mainz-Finthen", "Nieder-Olm", "Saulheim", "Wörrstadt",
-    "Biebelnheim", "Alzey", "Kreuz Alzey", "Kirchheimbolanden", "Winnweiler",
-    "Sembach", "Kreuz Kaiserslautern",
+    "Kreuz Mainz-Süd",
+    "Mainz-Finthen",
+    "Nieder-Olm",
+    "Saulheim",
+    "Wörrstadt",
+    "Biebelnheim",
+    "Alzey",
+    "Kreuz Alzey",
+    "Kirchheimbolanden",
+    "Winnweiler",
+    "Sembach",
+    "Kreuz Kaiserslautern",
   ],
   A65: [
-    "Kreuz Ludwigshafen", "Mutterstadt", "Schifferstadt", "Haßloch", "Neustadt-Nord",
-    "Neustadt-Süd", "Edenkoben", "Landau-Nord", "Landau-Zentrum", "Landau-Süd",
-    "Insheim", "Rohrbach", "Kandel-Nord",
+    "Kreuz Ludwigshafen",
+    "Mutterstadt",
+    "Schifferstadt",
+    "Haßloch",
+    "Neustadt-Nord",
+    "Neustadt-Süd",
+    "Edenkoben",
+    "Landau-Nord",
+    "Landau-Zentrum",
+    "Landau-Süd",
+    "Insheim",
+    "Rohrbach",
+    "Kandel-Nord",
   ],
   A48: [
-    "Dreieck Vulkaneifel", "Ulmen", "Kaisersesch", "Kaifenheim", "Polch", "Ochtendung",
-    "Koblenz-Metternich", "Kreuz Koblenz",
+    "Dreieck Vulkaneifel",
+    "Ulmen",
+    "Kaisersesch",
+    "Kaifenheim",
+    "Polch",
+    "Ochtendung",
+    "Koblenz-Metternich",
+    "Kreuz Koblenz",
   ],
   A60: [
-    "Prüm", "Bitburg", "Dreieck Vulkaneifel", "Wittlich", "Rheinböllen",
-    "Mainz-Finthen", "Mainz-Gonsenheim", "Kreuz Mainz-Süd", "Rüsselsheim",
+    "Prüm",
+    "Bitburg",
+    "Dreieck Vulkaneifel",
+    "Wittlich",
+    "Rheinböllen",
+    "Mainz-Finthen",
+    "Mainz-Gonsenheim",
+    "Kreuz Mainz-Süd",
+    "Rüsselsheim",
   ],
   A3: [
-    "Bad Honnef/Linz", "Neuwied", "Dierdorf", "Dreieck Dernbach", "Montabaur", "Diez", "Limburg-Nord", "Bad Camberg", "Idstein", "Niedernhausen",
-    "Wiesbaden", "Kreuz Wiesbaden",
+    "Bad Honnef/Linz",
+    "Neuwied",
+    "Dierdorf",
+    "Dreieck Dernbach",
+    "Montabaur",
+    "Diez",
+    "Limburg-Nord",
+    "Bad Camberg",
+    "Idstein",
+    "Niedernhausen",
+    "Wiesbaden",
+    "Kreuz Wiesbaden",
   ],
   A64: ["Trier-Ehrang", "Trier-Zewen", "Igel", "Wasserbillig"],
   A602: ["Kreuz Trier", "Trier-Ehrang", "Trier-Nord", "Trier-Verteilerkreis"],
   A623: [
-    "Dreieck Friedrichsthal", "Sulzbach/Altenwald", "Sulzbach", "Saarbrücken-Dudweiler",
-    "Saarbrücken-Herrensohr", "Saarbrücken-Rodenhof", "Saarbrücken-Ludwigsberg",
+    "Dreieck Friedrichsthal",
+    "Sulzbach/Altenwald",
+    "Sulzbach",
+    "Saarbrücken-Dudweiler",
+    "Saarbrücken-Herrensohr",
+    "Saarbrücken-Rodenhof",
+    "Saarbrücken-Ludwigsberg",
   ],
 };
 
 const AUTOBAHN_REGION_EXITS: Record<string, Record<string, string[]>> = {
   Saarland: {
-    A1: ["Nonnweiler", "Nonnweiler-Otzenhausen", "Nonnweiler-Braunshausen", "Tholey", "Eppelborn", "Illingen", "Kreuz Neunkirchen", "Neunkirchen-Kohlhof", "Kreuz Saarbrücken"],
-    A6: ["Kreuz Saarbrücken", "Saarbrücken-Fechingen", "Saarbrücken-Brebach", "St. Ingbert-West", "St. Ingbert-Mitte", "Rohrbach", "Homburg"],
-    A8: ["Perl-Borg", "Merzig-Schwemlingen", "Merzig", "Merzig-Wellingen", "Beckingen", "Dreieck Saarlouis", "Schwalbach-Hülzweiler", "Heusweiler", "Kreuz Neunkirchen", "Neunkirchen-Wellesweiler", "Homburg-Einöd"],
+    A1: [
+      "Nonnweiler",
+      "Nonnweiler-Otzenhausen",
+      "Nonnweiler-Braunshausen",
+      "Tholey",
+      "Eppelborn",
+      "Illingen",
+      "Kreuz Neunkirchen",
+      "Neunkirchen-Kohlhof",
+      "Kreuz Saarbrücken",
+    ],
+    A6: [
+      "Kreuz Saarbrücken",
+      "Saarbrücken-Fechingen",
+      "Saarbrücken-Brebach",
+      "St. Ingbert-West",
+      "St. Ingbert-Mitte",
+      "Rohrbach",
+      "Homburg",
+    ],
+    A8: [
+      "Perl-Borg",
+      "Merzig-Schwemlingen",
+      "Merzig",
+      "Merzig-Wellingen",
+      "Beckingen",
+      "Dreieck Saarlouis",
+      "Schwalbach-Hülzweiler",
+      "Heusweiler",
+      "Kreuz Neunkirchen",
+      "Neunkirchen-Wellesweiler",
+      "Homburg-Einöd",
+    ],
     A62: ["Nonnweiler", "Freisen"],
-    A620: ["Saarlouis-Mitte", "Saarlouis-Ost", "Bous", "Völklingen-Wehrden", "Völklingen-Stadtmitte", "Püttlingen", "Saarbrücken-Klarenthal", "Saarbrücken-Ludwigsberg", "Saarbrücken-Malstatt", "Saarbrücken-Wilhelm-Heinrich-Brücke", "Saarbrücken-Ost", "Kreuz Saarbrücken"],
-    A623: ["Dreieck Friedrichsthal", "Sulzbach/Altenwald", "Sulzbach", "Saarbrücken-Dudweiler", "Saarbrücken-Herrensohr", "Saarbrücken-Rodenhof", "Saarbrücken-Ludwigsberg"],
+    A620: [
+      "Saarlouis-Mitte",
+      "Saarlouis-Ost",
+      "Bous",
+      "Völklingen-Wehrden",
+      "Völklingen-Stadtmitte",
+      "Püttlingen",
+      "Saarbrücken-Klarenthal",
+      "Saarbrücken-Ludwigsberg",
+      "Saarbrücken-Malstatt",
+      "Saarbrücken-Wilhelm-Heinrich-Brücke",
+      "Saarbrücken-Ost",
+      "Kreuz Saarbrücken",
+    ],
+    A623: [
+      "Dreieck Friedrichsthal",
+      "Sulzbach/Altenwald",
+      "Sulzbach",
+      "Saarbrücken-Dudweiler",
+      "Saarbrücken-Herrensohr",
+      "Saarbrücken-Rodenhof",
+      "Saarbrücken-Ludwigsberg",
+    ],
   },
   "Rheinland-Pfalz": {
-    A1: ["Kreuz Wittlich", "Salmtal", "Hasborn", "Laufeld", "Wittlich-Mitte", "Mehring", "Schweich", "Trier-Ehrang", "Kreuz Trier", "Reinsfeld", "Hermeskeil"],
+    A1: [
+      "Kreuz Wittlich",
+      "Salmtal",
+      "Hasborn",
+      "Laufeld",
+      "Wittlich-Mitte",
+      "Mehring",
+      "Schweich",
+      "Trier-Ehrang",
+      "Kreuz Trier",
+      "Reinsfeld",
+      "Hermeskeil",
+    ],
     A3: ["Bad Honnef/Linz", "Neuwied", "Dierdorf", "Dreieck Dernbach", "Montabaur", "Diez"],
-    A6: ["Bruchmühlbach-Miesau", "Landstuhl-West", "Landstuhl-Ost", "Kreuz Landstuhl", "Ramstein-Miesenbach", "Kaiserslautern-Einsiedlerhof", "Kaiserslautern-West", "Kreuz Kaiserslautern", "Kaiserslautern-Ost", "Enkenbach-Alsenborn", "Sembach", "Wattenheim", "Grünstadt", "Kreuz Frankenthal", "Frankenthal"],
+    A6: [
+      "Bruchmühlbach-Miesau",
+      "Landstuhl-West",
+      "Landstuhl-Ost",
+      "Kreuz Landstuhl",
+      "Ramstein-Miesenbach",
+      "Kaiserslautern-Einsiedlerhof",
+      "Kaiserslautern-West",
+      "Kreuz Kaiserslautern",
+      "Kaiserslautern-Ost",
+      "Enkenbach-Alsenborn",
+      "Sembach",
+      "Wattenheim",
+      "Grünstadt",
+      "Kreuz Frankenthal",
+      "Frankenthal",
+    ],
     A8: ["Zweibrücken-Mitte", "Zweibrücken-Ixheim", "Pirmasens-Winzeln"],
-    A48: ["Dreieck Vulkaneifel", "Ulmen", "Kaisersesch", "Kaifenheim", "Polch", "Ochtendung", "Koblenz-Metternich", "Kreuz Koblenz"],
-    A60: ["Prüm", "Bitburg", "Dreieck Vulkaneifel", "Wittlich", "Rheinböllen", "Mainz-Finthen", "Mainz-Gonsenheim", "Kreuz Mainz-Süd"],
-    A61: ["Kreuz Meckenheim", "Bad Neuenahr-Ahrweiler", "Sinzig", "Kreuz Koblenz", "Boppard", "Emmelshausen", "Laudert", "Rheinböllen", "Dreieck Nahetal", "Bad Kreuznach", "Gau-Bickelheim", "Kreuz Alzey", "Worms", "Frankenthal", "Kreuz Frankenthal", "Ludwigshafen", "Speyer"],
-    A62: ["Freisen", "Kusel", "Glan-Münchweiler", "Bruchmühlbach-Miesau", "Landstuhl-West", "Kreuz Landstuhl", "Trippstadt", "Pirmasens-Nord", "Thaleischweiler-Fröschen", "Pirmasens-Zweibrücken"],
-    A63: ["Kreuz Mainz-Süd", "Mainz-Finthen", "Nieder-Olm", "Saulheim", "Wörrstadt", "Biebelnheim", "Alzey", "Kreuz Alzey", "Kirchheimbolanden", "Winnweiler", "Sembach", "Kreuz Kaiserslautern"],
+    A48: [
+      "Dreieck Vulkaneifel",
+      "Ulmen",
+      "Kaisersesch",
+      "Kaifenheim",
+      "Polch",
+      "Ochtendung",
+      "Koblenz-Metternich",
+      "Kreuz Koblenz",
+    ],
+    A60: [
+      "Prüm",
+      "Bitburg",
+      "Dreieck Vulkaneifel",
+      "Wittlich",
+      "Rheinböllen",
+      "Mainz-Finthen",
+      "Mainz-Gonsenheim",
+      "Kreuz Mainz-Süd",
+    ],
+    A61: [
+      "Kreuz Meckenheim",
+      "Bad Neuenahr-Ahrweiler",
+      "Sinzig",
+      "Kreuz Koblenz",
+      "Boppard",
+      "Emmelshausen",
+      "Laudert",
+      "Rheinböllen",
+      "Dreieck Nahetal",
+      "Bad Kreuznach",
+      "Gau-Bickelheim",
+      "Kreuz Alzey",
+      "Worms",
+      "Frankenthal",
+      "Kreuz Frankenthal",
+      "Ludwigshafen",
+      "Speyer",
+    ],
+    A62: [
+      "Freisen",
+      "Kusel",
+      "Glan-Münchweiler",
+      "Bruchmühlbach-Miesau",
+      "Landstuhl-West",
+      "Kreuz Landstuhl",
+      "Trippstadt",
+      "Pirmasens-Nord",
+      "Thaleischweiler-Fröschen",
+      "Pirmasens-Zweibrücken",
+    ],
+    A63: [
+      "Kreuz Mainz-Süd",
+      "Mainz-Finthen",
+      "Nieder-Olm",
+      "Saulheim",
+      "Wörrstadt",
+      "Biebelnheim",
+      "Alzey",
+      "Kreuz Alzey",
+      "Kirchheimbolanden",
+      "Winnweiler",
+      "Sembach",
+      "Kreuz Kaiserslautern",
+    ],
     A64: ["Trier-Ehrang", "Trier-Zewen", "Igel", "Wasserbillig"],
-    A65: ["Kreuz Ludwigshafen", "Mutterstadt", "Schifferstadt", "Haßloch", "Neustadt-Nord", "Neustadt-Süd", "Edenkoben", "Landau-Nord", "Landau-Zentrum", "Landau-Süd", "Insheim", "Rohrbach", "Kandel-Nord"],
+    A65: [
+      "Kreuz Ludwigshafen",
+      "Mutterstadt",
+      "Schifferstadt",
+      "Haßloch",
+      "Neustadt-Nord",
+      "Neustadt-Süd",
+      "Edenkoben",
+      "Landau-Nord",
+      "Landau-Zentrum",
+      "Landau-Süd",
+      "Insheim",
+      "Rohrbach",
+      "Kandel-Nord",
+    ],
     A602: ["Kreuz Trier", "Trier-Ehrang", "Trier-Nord", "Trier-Verteilerkreis"],
   },
 };
@@ -115,10 +390,16 @@ function endpointLabel(raw: string) {
     .replace(/^Dreieck\s+/i, "Autobahndreieck ")
     .trim();
 
-  if (!/^(AS|ASt\.?|Anschlussstelle|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s/i.test(raw.trim())) {
+  if (
+    !/^(AS|ASt\.?|Anschlussstelle|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s/i.test(
+      raw.trim(),
+    )
+  ) {
     return value;
   }
-  if (/^(Ausfahrt|Autobahnkreuz|Autobahndreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s/i.test(value)) {
+  if (
+    /^(Ausfahrt|Autobahnkreuz|Autobahndreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s/i.test(value)
+  ) {
     return value;
   }
   return `Ausfahrt ${value}`;
@@ -151,28 +432,47 @@ function aliases(name: string) {
         name.replace(/^Kreuz\s/i, "Autobahnkreuz "),
         name.replace(/^Dreieck\s/i, "Autobahndreieck "),
       ]
-    : [name, `AS ${name}`, `ASt ${name}`, `Ausfahrt ${name}`, `Anschlussstelle ${name}`, withoutKind];
+    : [
+        name,
+        `AS ${name}`,
+        `ASt ${name}`,
+        `Ausfahrt ${name}`,
+        `Anschlussstelle ${name}`,
+        withoutKind,
+      ];
   return Array.from(new Set(values)).filter((a) => norm(a).length >= 4);
 }
 
 function hasAlias(text: string, name: string) {
   return aliases(name).some((alias) => {
-    const prefix = /^(AS|ASt\.?|Ausfahrt|Anschlussstelle|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)\s/i.test(alias)
-      ? ""
-      : "(?:AS|ASt\\.?|Ausfahrt|Anschlussstelle|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)?\\s*";
-    return new RegExp(`(?:^|[^\\p{L}\\p{N}/-])${prefix}${escapeRegExp(alias)}(?![\\p{L}\\p{N}/-])`, "iu").test(text);
+    const prefix =
+      /^(AS|ASt\.?|Ausfahrt|Anschlussstelle|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)\s/i.test(
+        alias,
+      )
+        ? ""
+        : "(?:AS|ASt\\.?|Ausfahrt|Anschlussstelle|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)?\\s*";
+    return new RegExp(
+      `(?:^|[^\\p{L}\\p{N}/-])${prefix}${escapeRegExp(alias)}(?![\\p{L}\\p{N}/-])`,
+      "iu",
+    ).test(text);
   });
 }
 
 function contextBefore(text: string, name: string) {
   return aliases(name).some((alias) =>
-    new RegExp(`\\bvor\\s+(?:AS|ASt\\.?|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)?\\s*${escapeRegExp(alias)}`, "i").test(text),
+    new RegExp(
+      `\\bvor\\s+(?:AS|ASt\\.?|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)?\\s*${escapeRegExp(alias)}`,
+      "i",
+    ).test(text),
   );
 }
 
 function contextAfter(text: string, name: string) {
   return aliases(name).some((alias) =>
-    new RegExp(`\\bhinter\\s+(?:AS|ASt\\.?|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)?\\s*${escapeRegExp(alias)}`, "i").test(text),
+    new RegExp(
+      `\\bhinter\\s+(?:AS|ASt\\.?|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)?\\s*${escapeRegExp(alias)}`,
+      "i",
+    ).test(text),
   );
 }
 
@@ -212,8 +512,41 @@ export function exactSection(road: string, text: string): string | null {
 }
 
 /** True, wenn eine Meldung auf einen bekannten Saarland/RLP-Abschnitt passt. */
-export function isRegionalTraffic(road: string, text: string, region?: "Saarland" | "Rheinland-Pfalz") {
+export function isRegionalTraffic(
+  road: string,
+  text: string,
+  region?: "Saarland" | "Rheinland-Pfalz",
+) {
   const key = roadKey(road);
   const list = region ? AUTOBAHN_REGION_EXITS[region]?.[key] : AUTOBAHN_EXITS[key];
   return Boolean(list?.some((name) => hasAlias(text, name)));
+}
+
+/**
+ * Ermittelt den exakten Autobahn-Abschnitt aus einer reinen Ortsangabe (z. B. "St. Ingbert" bei
+ * der A6) – findet die zugehörige(n) Anschlussstelle(n) und benennt den Abschnitt dazwischen.
+ * So bekommt auch eine Hörer- oder RSS-Meldung ohne offizielle Abschnittsangabe eine genaue
+ * Position ("zwischen AS St. Ingbert-West und AS St. Ingbert-Mitte") statt nur "im Streckenverlauf".
+ */
+export function sectionForPlace(road: string, place: string): string | null {
+  const list = AUTOBAHN_EXITS[roadKey(road)];
+  if (!list || !place) return null;
+  // "Sankt Ingbert" und "St. Ingbert" sollen dieselbe Anschlussstelle treffen.
+  const target = norm(place.replace(/\bsankt\s+/gi, "st. "));
+  if (target.length < 4) return null;
+  const hits: number[] = [];
+  list.forEach((name, i) => {
+    const n = norm(name);
+    if (n.includes(target) || target.includes(n)) hits.push(i);
+  });
+  if (!hits.length) return null;
+  let a = Math.min(...hits);
+  let b = Math.max(...hits);
+  if (a === b) {
+    // Nur eine Anschlussstelle bekannt: den benachbarten Abschnitt nennen.
+    if (b + 1 < list.length) b = b + 1;
+    else if (a - 1 >= 0) a = a - 1;
+    else return `an ${exitLabel(list[a])}`;
+  }
+  return `zwischen ${exitLabel(list[a])} und ${exitLabel(list[b])}`;
 }

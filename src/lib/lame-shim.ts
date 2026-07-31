@@ -21,16 +21,26 @@ import BitStream from "lamejs/src/js/BitStream.js";
  * Projekt), werden hier alle betroffenen Klassen einmalig als globale Variablen bereitgestellt –
  * exakt das, was in einem Browserify-Bundle "zufällig" passiert wäre.
  *
- * Muss VOR dem ersten Mp3Encoder-Aufruf importiert werden (siehe use-mic-broadcast.ts).
+ * WICHTIG: Die Zuweisungen passieren absichtlich in einer exportierten Funktion, die im
+ * Mic-Hook aufgerufen wird (und nicht als reiner Modul-Side-Effect). Hintergrund: die
+ * package.json hat "sideEffects": false, weshalb Rollup beim Produktions-Build einen reinen
+ * Side-Effect-Import ("import "./lame-shim"") komplett wegoptimiert – die Globals blieben
+ * unset und Mp3Encoder wirft "MPEGMode is not defined". Eine aufgerufene Funktion ist ein
+ * echter Side-Effect, den Rollup nicht entfernen darf. Muss VOR dem ersten Mp3Encoder-Aufruf
+ * laufen (siehe use-mic-broadcast.ts).
  */
 const globals = globalThis as unknown as Record<string, unknown>;
-globals.MPEGMode ??= MPEGMode;
-globals.Lame ??= Lame;
-globals.GainAnalysis ??= GainAnalysis;
-globals.ATH ??= ATH;
-globals.LameInternalFlags ??= LameInternalFlags;
-globals.MeanBits ??= MeanBits;
-globals.CalcNoiseResult ??= CalcNoiseResult;
-globals.L3Side ??= L3Side;
-globals.Tables ??= Tables;
-globals.BitStream ??= BitStream;
+
+/** Stellt lamejs' interne globale Referenzen einmalig bereit. Mehrfacher Aufruf ist harmlos. */
+export function installLameGlobals(): void {
+  globals.MPEGMode ??= MPEGMode;
+  globals.Lame ??= Lame;
+  globals.GainAnalysis ??= GainAnalysis;
+  globals.ATH ??= ATH;
+  globals.LameInternalFlags ??= LameInternalFlags;
+  globals.MeanBits ??= MeanBits;
+  globals.CalcNoiseResult ??= CalcNoiseResult;
+  globals.L3Side ??= L3Side;
+  globals.Tables ??= Tables;
+  globals.BitStream ??= BitStream;
+}

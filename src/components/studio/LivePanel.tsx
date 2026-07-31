@@ -337,8 +337,8 @@ export function LivePanel(props: Props) {
 
             <TabsContent value="jingles" className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Play = vorhören im Studio. Klick auf die Kachel = sofort in die Live-Warteschlange
-                (läuft erst, sobald "Livesendung" an ist).
+                Play = vorhören im Studio. Cue = als Nächstes einplanen. Klick auf die Kachel =
+                sofort in die Live-Warteschlange (läuft erst, sobald "Livesendung" an ist).
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {jingles.map((m) => (
@@ -361,6 +361,13 @@ export function LivePanel(props: Props) {
                     >
                       {m.title}
                     </button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => props.cueNext(fromMedia(m, "jingle"))}
+                    >
+                      Cue
+                    </Button>
                   </div>
                 ))}
                 {sloganMedia.map((m) => (
@@ -383,6 +390,13 @@ export function LivePanel(props: Props) {
                     >
                       {m.title}
                     </button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => props.cueNext(fromMedia(m, "slogan"))}
+                    >
+                      Cue
+                    </Button>
                   </div>
                 ))}
                 {SLOGANS.slice(0, 6).map((s, i) => (
@@ -396,6 +410,13 @@ export function LivePanel(props: Props) {
                     >
                       {s}
                     </button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => props.cueNext(speakItem(s, `Slogan ${i + 1}`, "slogan"))}
+                    >
+                      Cue
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -403,9 +424,9 @@ export function LivePanel(props: Props) {
                 size="sm"
                 variant="secondary"
                 disabled={!jingles.length}
-                onClick={() => jingles[0] && props.playNow(fromMedia(jingles[0], "jingle"))}
+                onClick={() => jingles[0] && props.cueNext(fromMedia(jingles[0], "jingle"))}
               >
-                <Zap className="size-4" /> Jingle jetzt
+                <Zap className="size-4" /> Jingle einplanen
               </Button>
             </TabsContent>
 

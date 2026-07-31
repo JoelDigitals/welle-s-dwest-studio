@@ -62,6 +62,30 @@ async function humanizeTraffic(text: string): Promise<string> {
 }
 
 /**
+ * Der Blitzer-Service (aus Hörer-Hotline-Meldungen) wird warm und persönlich wie ein
+ * Hörer-Segment vorgelesen – Fakten (Straße, Ort) bleiben exakt, nur der Ton ist herzlich.
+ * Schlägt das fehl, wird der Original-Text gesprochen.
+ */
+async function humanizeBlitzer(text: string, hostName?: string): Promise<string> {
+  try {
+    const res = await fetch("/api/script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: "Blitzer-Service (faktengetreu umformulieren)",
+        brief: text,
+        hostName,
+      }),
+    });
+    if (!res.ok) return text;
+    const data = (await res.json().catch(() => null)) as { text?: string } | null;
+    return data?.text?.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
+/**
  * Erzeugt bzw. lädt das Audio eines Plan-Elements.
  * Sprechtexte werden einmal generiert und 48 Stunden lang wiederverwendet.
  */
@@ -104,9 +128,11 @@ export async function prepareItem(item: PlanItem): Promise<PrepResult> {
   const spokenText =
     item.kind === "moderation"
       ? await humanizeModeration(text, item.hostName)
-      : item.kind === "traffic"
-        ? await humanizeTraffic(text)
-        : text;
+      : item.kind === "traffic" && item.blitzerService
+        ? await humanizeBlitzer(text, item.hostName)
+        : item.kind === "traffic"
+          ? await humanizeTraffic(text)
+          : text;
 
   const res = await fetch("/api/tts", {
     method: "POST",

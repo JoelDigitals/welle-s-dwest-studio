@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mp3Encoder } from "lamejs";
-// Muss vor jeder Mp3Encoder-Nutzung importiert sein – behebt mehrere fehlende globale
-// Referenzen im lamejs-Paket selbst (siehe lame-shim.ts für Details).
-import "./lame-shim";
+// Behebt mehrere fehlende globale Referenzen im lamejs-Paket selbst (siehe lame-shim.ts für
+// Details). Muss vor dem ersten Mp3Encoder-Aufruf laufen – als aufgerufene Funktion, nicht als
+// reiner Side-Effect-Import (sonst wird er bei "sideEffects": false wegoptimiert).
+import { installLameGlobals } from "./lame-shim";
+installLameGlobals();
 
 /** Sendeintervall der MP3-Chunks zum Server – klein genug für echtes Live-Gefühl, groß genug,
  *  um nicht bei jedem winzigen Encoder-Aufruf einen eigenen HTTP-Request zu feuern. */
@@ -127,9 +129,10 @@ export function useMicBroadcast() {
     }
     try {
       const AudioContextCtor: typeof AudioContext | undefined =
-        window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (!AudioContextCtor) throw new Error("Web Audio API (AudioContext) wird nicht unterstützt.");
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor)
+        throw new Error("Web Audio API (AudioContext) wird nicht unterstützt.");
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;

@@ -12,6 +12,7 @@ import { TopicPreview } from "@/components/studio/TopicPreview";
 import { LivePanel } from "@/components/studio/LivePanel";
 import { NewsPanel } from "@/components/studio/NewsPanel";
 import { NewsroomPanel } from "@/components/studio/NewsroomPanel";
+import { TextStudioPanel } from "@/components/studio/TextStudioPanel";
 import { LibraryPanel } from "@/components/studio/LibraryPanel";
 import { HotlinePanel } from "@/components/studio/HotlinePanel";
 import { DashboardPanel } from "@/components/studio/DashboardPanel";
@@ -270,6 +271,7 @@ function Index() {
             <TabsTrigger value="live">Livesendung</TabsTrigger>
             <TabsTrigger value="newsroom">Newsroom</TabsTrigger>
             <TabsTrigger value="redaktion">Nachrichten & Verkehr</TabsTrigger>
+            <TabsTrigger value="texte">Texte</TabsTrigger>
             <TabsTrigger value="werbung">Werbung</TabsTrigger>
             <TabsTrigger value="freigabe">Freigabe</TabsTrigger>
             <TabsTrigger value="hotline">Hotline</TabsTrigger>
@@ -353,6 +355,23 @@ function Index() {
               reports={reports}
               addReport={addReport}
               removeReport={removeReport}
+            />
+          </TabsContent>
+
+          <TabsContent value="texte" className="mt-4">
+            <TextStudioPanel
+              news={news}
+              traffic={traffic}
+              hotline={hotline}
+              newsError={newsQuery.error instanceof Error ? newsQuery.error.message : null}
+              trafficError={trafficQuery.error instanceof Error ? trafficQuery.error.message : null}
+              refetch={() => {
+                void newsQuery.refetch();
+                void trafficQuery.refetch();
+                void hotlineQuery.refetch();
+              }}
+              playNow={e.playNow}
+              cueNext={e.cueNext}
             />
           </TabsContent>
 

@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AiError } from "@/lib/ai-text";
-import { generateModerationText, tryHumanizeTraffic } from "@/lib/server/moderation-text";
+import {
+  generateModerationText,
+  tryHumanizeTraffic,
+  tryHumanizeBlitzer,
+  tryHumanizeNews,
+} from "@/lib/server/moderation-text";
 import { requireAuth } from "@/lib/server/auth";
 
 type Body = {
@@ -28,17 +33,22 @@ export const Route = createFileRoute("/api/script")({
         }
 
         try {
-          // Verkehr wird mit dem faktentreuen Verkehrsfunk-Prompt umformuliert (Straßen/Orte/
-          // Angaben bleiben exakt, nur die Sprachform wird natürlicher) – die freie Moderation
-          // dürfte hier neue Inhalte erfinden, das wäre bei Verkehrsmeldungen falsch.
+          // Nachrichten, Verkehr und Blitzer-Service werden mit einem faktentreuen Prompt
+          // umformuliert (Namen/Straßen/Orte/Angaben bleiben exakt, nur die Sprachform wird
+          // natürlicher) – die freie Moderation dürfte hier neue Inhalte erfinden, das wäre bei
+          // echten Meldungen falsch.
           const text =
-            body.kind === "Verkehr (faktengetreu umformulieren)"
-              ? await tryHumanizeTraffic(brief)
-              : await generateModerationText({
-                  kind: body.kind,
-                  hostName: body.hostName,
-                  brief,
-                });
+            body.kind === "Nachrichten (faktengetreu umformulieren)"
+              ? await tryHumanizeNews(brief)
+              : body.kind === "Verkehr (faktengetreu umformulieren)"
+                ? await tryHumanizeTraffic(brief)
+                : body.kind === "Blitzer-Service (faktengetreu umformulieren)"
+                  ? await tryHumanizeBlitzer(brief, body.hostName)
+                  : await generateModerationText({
+                      kind: body.kind,
+                      hostName: body.hostName,
+                      brief,
+                    });
           return Response.json({ text });
         } catch (err) {
           if (err instanceof AiError) {

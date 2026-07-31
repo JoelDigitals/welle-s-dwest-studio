@@ -71,6 +71,10 @@ export type PlanItem = {
    *  Sonstiges) – Kern jeder Meldung (Namen, Wunsch, Anliegen) bleibt fest, nur die Verbindung
    *  zwischen den Meldungen wird frei formuliert (siehe pushHotlineMix in planner.ts). */
   hotlineMix?: boolean;
+  /** Markiert den Blitzer-Service (aus Hörer-Hotline-Meldungen) – wird wie ein warmes
+   *  Hörer-Segment vorgelesen (mit Dank an die Melder:innen), nur die Fakten (Straße, Ort,
+   *  Richtung) bleiben exakt. Wird vor dem generischen Verkehrsfunk-Prompt umformuliert. */
+  blitzerService?: boolean;
   error?: string;
   /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
   audioUrl?: string;
