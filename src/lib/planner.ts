@@ -23,7 +23,6 @@ import type {
   PlanItem,
 } from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
-import { exactSection, sectionForPlace } from "./autobahn-exits";
 import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
 
 let counter = 0;
@@ -282,10 +281,11 @@ function directionOf(text: string) {
   return m ? `in Richtung ${m[1]}` : "";
 }
 
-/** Eine natürlich klingende Verkehrsmeldung im Radiostil – die Position wird so exakt wie möglich
- *  genannt: zuerst der explizite Abschnitt aus dem Meldungstext ("zwischen AS A und AS B"), dann
- *  die Auflösung einer Ortsangabe über die Anschlussstellen-Tabelle (place), erst dann die
- *  grobe Text-Heuristik. Nur wenn wirklich gar nichts bekannt ist, bleibt "im Streckenverlauf". */
+/** Eine natürlich klingende Verkehrsmeldung im Radiostil – die Position wird BEWUSST nur allgemein
+ *  genannt ("im Streckenverlauf der A6"), nie punktgenau (keine Ausfahrt, kein Kreuz, keine
+ *  "zwischen X und Y"-Angabe). Genau wie beim Blitzer-Service (stripExactSpot) soll ein Radio-
+ *  Verkehrshinweis keine exakte Stelle nennen, an der gerade etwas ist – das war vorher zu genau
+ *  und wirkte weniger wie echter Verkehrsfunk als wie eine Navi-Ansage. */
 function trafficLine(
   item: { road: string; headline: string; message: string; place?: string },
   index: number,
@@ -299,15 +299,7 @@ function trafficLine(
     .replace(/\bASt\.?\s+/g, "Ausfahrt ")
     .replace(/\bRi\.\s*/g, "Richtung ");
   const road = item.road?.trim() || "";
-  // Exakter Abschnitt aus der Ausfahrtstabelle, sonst Auflösung der Ortsangabe, sonst Textanalyse.
-  const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
-  const where =
-    exactSection(road, original) ||
-    exactSection(road, raw) ||
-    sectionForPlace(road, item.place ?? "") ||
-    sectionForPlace(road, textPlace) ||
-    betweenOf(raw) ||
-    "im Streckenverlauf";
+  const where = "im Streckenverlauf";
   const dir = directionOf(raw);
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);

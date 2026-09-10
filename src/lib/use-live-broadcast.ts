@@ -265,7 +265,14 @@ export function useLiveBroadcast() {
     const activeSlot = getSlot(activeSlotRef.current);
     if (activeSlot.uid !== state.uid) return;
 
-    const remaining = state.duration - elapsedNow;
+    // Echte Abspielposition statt state.duration/elapsedNow (siehe Kommentar im Überblend-Effekt
+    // unten) – sonst könnte sich der Versatz durch viele Überblendungen hinweg irgendwann so weit
+    // aufsummieren, dass sogar das großzügige 15-Sekunden-Vorlade-Fenster nicht mehr reicht.
+    const audioDuration = activeSlot.audio.duration;
+    const remaining =
+      Number.isFinite(audioDuration) && audioDuration > 0
+        ? audioDuration - activeSlot.audio.currentTime
+        : state.duration - elapsedNow;
     if (remaining > PREFETCH_LEAD_S) return;
 
     const inactiveKey = activeSlotRef.current === "a" ? "b" : "a";
@@ -321,7 +328,19 @@ export function useLiveBroadcast() {
           state.duration * 0.6,
           next.duration * 0.6,
         );
-    const remaining = state.duration - elapsedNow;
+    // Echte Abspielposition des Audio-Elements verwenden, NICHT state.duration/elapsedNow: jede
+    // Überblendung lässt das neue Element schon ein paar Sekunden VOR der vom Server gemeldeten
+    // "offiziellen" Startzeit hörbar anlaufen (genau das ist ja der Sinn der Überblendung) – die
+    // elapsedNow-Rechnung weiß davon nichts und hält das Element für entsprechend "jünger", als es
+    // wirklich ist. Bei jeder weiteren Überblendung addiert sich dieser Versatz, bis der nächste
+    // Übergang zu spät auslöst und noch leise einblendet, während das alte Element schon fertig ist
+    // (hörbar wie eine kurze Stille/Stummschaltung). audio.currentTime/.duration kennen die
+    // tatsächliche Position und sind dagegen immun.
+    const audioDuration = activeSlot.audio.duration;
+    const remaining =
+      Number.isFinite(audioDuration) && audioDuration > 0
+        ? audioDuration - activeSlot.audio.currentTime
+        : state.duration - elapsedNow;
     // Nur noch "zu früh" abbrechen, nicht mehr "zu spät" (kein "<= 0.15"-Abbruch mehr): der
     // Poll-Takt (500ms) kann ein enges Zeitfenster (z. B. 1,5s bei Ansage-zu-Ansage) knapp
     // verpassen – dann lieber sofort mit der (sehr kurzen) Restzeit überblenden, statt an den

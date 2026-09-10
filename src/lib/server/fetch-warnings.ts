@@ -1,6 +1,7 @@
 /** Amtliche Warnmeldungen (Bevölkerungsschutz, Wetter, Polizei, Hochwasser – dieselbe Quelle wie
  *  die NINA-Warn-App und Cell Broadcast/"Warntag") von der offiziellen BBK-Schnittstelle
  *  warnung.bund.de. Kein API-Key nötig, öffentlich dokumentiert (gegen den echten Server geprüft). */
+import { berlinDateKey } from "@/lib/berlin-time";
 
 const SOURCES = ["mowas", "dwd", "katwarn", "police", "lhp", "biwapp"] as const;
 type Source = (typeof SOURCES)[number];
@@ -31,6 +32,10 @@ export type CivilWarning = {
   instruction: string;
   areas: string[];
   startDate: string;
+  /** Wann genau DIESE Version (Warnung oder Entwarnung) verschickt wurde (CAP "sent") – dient dem
+   *  Nur-heute-Filter, damit z. B. am Warntag nur die 11-Uhr-Warnung und die 11:45-Uhr-Entwarnung
+   *  desselben Tages gesendet werden, nicht auch länger zurückliegende, noch aktive Warnungen. */
+  sent: string;
 };
 
 async function fetchWithTimeout(url: string, ms: number) {
@@ -72,6 +77,7 @@ async function fetchDetail(source: Source, entry: MapEntry): Promise<CivilWarnin
     if (!res.ok) return null;
     const data = (await res.json()) as {
       msgType?: string;
+      sent?: string;
       info?: Array<{
         language?: string;
         headline?: string;
@@ -98,6 +104,7 @@ async function fetchDetail(source: Source, entry: MapEntry): Promise<CivilWarnin
       instruction: cleanText(info.instruction),
       areas: (info.area ?? []).map((a) => cleanText(a.areaDesc)).filter(Boolean),
       startDate: entry.startDate,
+      sent: data.sent ?? entry.startDate,
     };
   } catch {
     return null;
@@ -127,8 +134,14 @@ export async function fetchWarnings(): Promise<WarningsResult> {
   const relevant = SOURCES.flatMap((source, i) => perSource[i].map((entry) => ({ source, entry })));
   const details = await Promise.all(relevant.map(({ source, entry }) => fetchDetail(source, entry)));
 
+  // Nur Warnungen (und Entwarnungen), die HEUTE (Berlin-Kalendertag) tatsächlich verschickt
+  // wurden – ein Warntag-Test um 11 Uhr mit Entwarnung um 11:45 Uhr soll nur an diesem einen Tag
+  // laufen, nicht noch tagelang als "aktive" Warnung nachwirken.
+  const today = berlinDateKey(Date.now());
   return {
     fetchedAt: new Date().toISOString(),
-    items: details.filter((w): w is CivilWarning => Boolean(w)),
+    items: details
+      .filter((w): w is CivilWarning => Boolean(w))
+      .filter((w) => berlinDateKey(new Date(w.sent).getTime()) === today),
   };
 }
