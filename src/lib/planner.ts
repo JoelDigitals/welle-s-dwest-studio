@@ -202,7 +202,8 @@ const RELEVANT =
 
 function reasonOf(text: string) {
   const t = text.toLowerCase();
-  if (t.includes("unfall")) return "nach einem Unfall";
+  if (/unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß/.test(t))
+    return "nach einem Unfall";
   if (t.includes("bergung")) return "wegen Bergungsarbeiten";
   if (t.includes("baustelle") || t.includes("bauarbeiten")) return "wegen einer Baustelle";
   if (t.includes("verengung")) return "wegen einer Fahrbahnverengung";
@@ -320,7 +321,9 @@ function trafficLine(
     .replace(/\bASt\.?\s+/g, "Ausfahrt ")
     .replace(/\bRi\.\s*/g, "Richtung ");
   const road = item.road?.trim() || "";
-  const isAccident = /unfall/i.test(raw);
+  const isAccident = /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(
+    raw,
+  );
   const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
   const where = isAccident
     ? exactSection(road, original) ||

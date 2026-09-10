@@ -53,18 +53,24 @@ async function fetchWithTimeout(url: string, ms: number, init?: RequestInit) {
   }
 }
 
-function decode(value: string) {
+/** Entfernt EINMAL CDATA-Hülle, dekodiert die gängigen Entities, strippt danach HTML-Tags. */
+function decodeOnce(value: string) {
   return value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<[^>]+>/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/<[^>]+>/g, "");
+}
+
+/** Manche Feeds liefern Felder DOPPELT entity-kodiert (siehe fetch-traffic-rss.ts) – ein
+ *  einzelner Dekodier-Durchlauf lässt dann rohe "&nbsp;"-Reste oder ganze Tags als Klartext
+ *  übrig. Der zweite, idempotente Durchlauf räumt das zuverlässig auf. */
+function decode(value: string) {
+  return decodeOnce(decodeOnce(value)).replace(/\s+/g, " ").trim();
 }
 
 function tag(block: string, name: string) {

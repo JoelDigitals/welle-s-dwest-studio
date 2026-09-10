@@ -113,18 +113,26 @@ async function fetchWithTimeout(url: string, ms: number, init?: RequestInit) {
   }
 }
 
-function decode(value: string) {
+/** Entfernt EINMAL CDATA-Hülle, dekodiert die gängigen Entities, strippt danach HTML-Tags. */
+function decodeOnce(value: string) {
   return value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<[^>]+>/g, "")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/<[^>]+>/g, "");
+}
+
+/** Google News liefert sein <description>-Feld teils DOPPELT entity-kodiert
+ *  ("&amp;nbsp;" statt "&nbsp;", "&lt;a href=...&gt;...&lt;/a&gt;" als Tag-Text) – ein einzelner
+ *  Dekodier-Durchlauf lässt dann noch rohe "&nbsp;"-Reste oder sogar ganze <a>-Tags samt
+ *  Tracking-URL als Klartext übrig (landete so schon in der KI-Umformulierung/TTS). Der zweite,
+ *  idempotente Durchlauf räumt das zuverlässig auf, ohne bei normal kodiertem Text etwas zu tun. */
+function decode(value: string) {
+  return decodeOnce(decodeOnce(value)).replace(/\s+/g, " ").trim();
 }
 
 function tag(block: string, name: string) {
