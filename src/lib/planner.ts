@@ -14,7 +14,14 @@ import {
 } from "./radio-config";
 import { SLOGANS } from "./radio-data";
 import type { MediaRecord } from "./media-db";
-import type { FreeTrack, HotlineReport, ItemKind, PlanContext, PlanItem } from "./broadcast-types";
+import type {
+  CivilWarning,
+  FreeTrack,
+  HotlineReport,
+  ItemKind,
+  PlanContext,
+  PlanItem,
+} from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
 import { exactSection, sectionForPlace } from "./autobahn-exits";
 import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
@@ -480,20 +487,43 @@ function weatherListenerLine(ctx: PlanContext) {
   return ` Dazu Meldungen von Hörerinnen und Hörern, ${lines.join(", ")}`;
 }
 
-/** Blitzer-Service – ausschließlich aus Hörermeldungen. */
+/** Entfernt exakte Ortsangaben aus einem Blitzer-Meldungstext (Ausfahrt/Kreuz/Dreieck-Namen,
+ *  "Höhe X", Kilometerangaben) – rechtlich dürfen Blitzer nicht punktgenau angesagt werden
+ *  (vergleichbar mit dem Verbot von Radarwarn-Geräten/-Apps, StVO §23 1c), nur der allgemeine
+ *  Streckenverlauf. Läuft VOR der KI-Umformulierung, damit ein exakter Punkt gar nicht erst als
+ *  Ausgangsmaterial vorliegt, den die KI versehentlich übernehmen könnte. */
+function stripExactSpot(text: string): string {
+  return clean(
+    text
+      .replace(
+        /\b(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?/g,
+        "",
+      )
+      .replace(/\bin\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
+      .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
+      .replace(/\bbei\s+km\s*\d+(?:[.,]\d+)?/gi, "")
+      .replace(/\bkm\s*\d+(?:[.,]\d+)?/gi, "")
+      .replace(/\bzwischen\s+.+?\s+und\s+[^,.;]+/gi, ""),
+  );
+}
+
+/** Blitzer-Service – ausschließlich aus Hörermeldungen. Nennt bewusst NUR die Straße/Region,
+ *  nie den genauen Ort/Abschnitt (siehe stripExactSpot) – ein punktgenauer Radarwarn-Hinweis im
+ *  Radio wäre inhaltlich dasselbe wie ein verbotenes Radarwarngerät, nur über Funk statt App. */
 export function blitzerLine(ctx: PlanContext) {
   const list = freshHotline(ctx)
     .filter((h) => h.type === "blitzer")
     .slice(0, 5);
   if (!list.length) return "";
-  const lines = list.map((h) =>
-    clean(
+  const lines = list.map((h) => {
+    const detail = stripExactSpot(h.message ?? "");
+    return clean(
       `${h.region === "Saarland" ? "Im Saarland" : "In Rheinland-Pfalz"}: ${
-        h.road ? `${h.road}, ` : ""
-      }${h.place}${h.message ? `, ${h.message.replace(/[.!?]+$/, "")}` : ""}`,
-    ),
-  );
-  return `Und jetzt der Blitzer-Service für Saarland und Rheinland-Pfalz. Geblitzt wird gemeldet: ${lines.join(
+        h.road ? `auf der ${h.road}, im Streckenverlauf` : "im Streckenverlauf"
+      }${detail ? `, ${detail.replace(/[.!?]+$/, "")}` : ""}`,
+    );
+  });
+  return `Und jetzt der Blitzer-Service für Saarland und Rheinland-Pfalz. Geblitzt wird gemeldet – bewusst nur der Streckenabschnitt, kein genauer Punkt: ${lines.join(
     ". ",
   )}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`;
 }
@@ -1085,12 +1115,17 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
   const usedTalk = new Set<string>();
   /** Themen-Checkliste über den gesamten Plan hinweg. */
   const coveredTopics = new Set<TopicCat>();
+  /** Echte Nachrichten, auf die die Moderation schon reagiert hat (siehe pushModeration) – nie
+   *  zweimal dieselbe Meldung als "Tagesaktuell"-Reaktion verwenden. */
+  const usedNewsReactionIds = new Set<string>();
   /** Schon (in diesem buildPlan()-Durchlauf) als Hotline-Mix eingeplante IDs – MUSS außerhalb von
    *  pushHotlineMix() leben und über alle Stunden-Durchläufe hinweg bestehen bleiben, sonst weiß
    *  ein späterer Aufruf im selben Plan nichts von einem vorigen und plant dieselben, noch nicht
    *  wirklich "announced" (das passiert erst über den ctx-Callback, außerhalb dieser Funktion)
    *  Meldungen immer wieder neu ein – bis der interne 30er-Schleifenschutz greift. */
   const hotlineAnnouncedThisPlan = new Set(ctx.hotlineAnnouncedIds ?? []);
+  /** Wie hotlineAnnouncedThisPlan, aber für amtliche Warnmeldungen (siehe pushCivilWarning). */
+  const civilWarningsAnnouncedThisPlan = new Set(ctx.civilWarningsAnnouncedIds ?? []);
 
   const start = new Date(opts.from);
   start.setMinutes(0, 0, 0);
@@ -1312,6 +1347,26 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
 
     const pushModeration = () => {
       generalIndex++;
+      // Tagesaktuelles Thema statt einer zeitlosen, erfundenen Anekdote: außerhalb der Nacht
+      // reagiert die Moderation regelmäßig auf eine ECHTE, noch nicht verwendete aktuelle Meldung
+      // (aus News UND Verkehr/Blitzer, damit sich auch Verkehrsthemen als Gesprächsstoff
+      // eignen), statt immer nur aus der kleinen, zeitlosen CAT_TALK-Bibliothek zu schöpfen –
+      // sonst gäbe es effektiv nur eine Handvoll austauschbarer Themen im Kreis.
+      if (!isNightHour(berlinHour(cursor)) && generalIndex % 3 === 1) {
+        const pool = (ctx.news ?? []).filter((n) => !usedNewsReactionIds.has(n.id));
+        const story = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+        if (story) {
+          usedNewsReactionIds.add(story.id);
+          speak(
+            "moderation",
+            `Tagesaktuell — ${host.name}`,
+            story.headline,
+            `${story.headline}. ${story.body}`.trim(),
+            { newsGrounded: true },
+          );
+          return;
+        }
+      }
       const { topic, cat, open, fallback } = nextModerationTopic(
         show.topics,
         generalIndex,
@@ -1473,6 +1528,35 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           { voice: correspondent.voice, hostId: correspondent.id, hostName: correspondent.name },
         );
       }
+    };
+
+    /** Amtliche Warnmeldung (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp – dieselbe Quelle
+     *  wie NINA-App und Cell Broadcast/"Warntag"). Bekommt Vorrang vor ALLEM anderen (auch vor
+     *  Hörermeldungen) – eine amtliche Warnung soll so schnell wie möglich on air, nicht erst auf
+     *  den nächsten Rotations-Durchlauf warten. Fakten und Verhaltenshinweise bleiben exakt
+     *  (siehe tryHumanizeCivilWarning), nur die sprachliche Form wird radiotauglich geglättet. */
+    const pushCivilWarning = () => {
+      const w = (ctx.civilWarnings ?? []).find((x) => !civilWarningsAnnouncedThisPlan.has(x.key));
+      if (!w) return false;
+      generalIndex++;
+      const raw = [
+        w.headline,
+        w.description,
+        w.instruction ? `Verhaltenshinweis: ${w.instruction}` : "",
+        w.areas.length ? `Betroffenes Gebiet: ${w.areas.join(", ")}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      speak(
+        "moderation",
+        w.type === "Cancel" ? "Entwarnung" : "Amtliche Warnmeldung",
+        w.region,
+        raw,
+        { civilWarning: true },
+      );
+      civilWarningsAnnouncedThisPlan.add(w.key);
+      ctx.markCivilWarningsAnnounced?.([w.key]);
+      return true;
     };
 
     /** Sonstige Hörer-Hotline-Meldungen (Gruß, Musikwunsch, Lob & Kritik, Sonstiges) – Verkehr/
@@ -1637,6 +1721,12 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         const live = liveSlotAt(ctx.liveSlots, cursor);
         if (live) {
           cursor = live.startAt + live.minutes * 60_000;
+          continue;
+        }
+        // Amtliche Warnmeldungen haben Vorrang vor allem anderen – auch vor Hörermeldungen.
+        if (pushCivilWarning()) {
+          flushBlock();
+          if (cursor === before) break;
           continue;
         }
         // Unangesagte Hörermeldungen (Gruß/Musikwunsch/Lob & Kritik/Sonstiges) bekommen Vorrang

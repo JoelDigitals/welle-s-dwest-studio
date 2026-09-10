@@ -75,6 +75,14 @@ export type PlanItem = {
    *  Hörer-Segment vorgelesen (mit Dank an die Melder:innen), nur die Fakten (Straße, Ort,
    *  Richtung) bleiben exakt. Wird vor dem generischen Verkehrsfunk-Prompt umformuliert. */
   blitzerService?: boolean;
+  /** Markiert eine amtliche Warnmeldung (Bevölkerungsschutz/Wetter/Polizei/Hochwasser, dieselbe
+   *  Quelle wie NINA-App und Cell Broadcast/"Warntag") – wird faktentreu umformuliert (Fakten,
+   *  Verhaltenshinweise fest), nie frei erfunden. Bekommt Vorrang vor allem anderen. */
+  civilWarning?: boolean;
+  /** Markiert eine Moderation, die auf eine ECHTE aktuelle Nachricht reagiert (statt auf eine
+   *  zeitlose, erfundene CAT_TALK-Anekdote) – die Nachricht selbst bleibt faktentreu, nur die
+   *  persönliche Reaktion/Einschätzung der Moderation drumherum ist frei formuliert. */
+  newsGrounded?: boolean;
   error?: string;
   /** Objekt-URL des fertig generierten bzw. hochgeladenen Audios */
   audioUrl?: string;
@@ -160,8 +168,35 @@ export type PlanContext = {
    *  Imports, damit es weiterhin auch von der alten, rein clientseitigen Simulation genutzt
    *  werden kann (use-radio-engine.ts), die diesen Callback einfach nicht setzt. */
   markHotlineAnnounced?: (ids: string[]) => void;
+  /** Amtliche Warnmeldungen für Saarland/Rheinland-Pfalz (BBK: MoWaS, DWD, Katwarn, Polizei,
+   *  Hochwasser, Biwapp) – dieselbe Quelle wie die NINA-App und Cell Broadcast/"Warntag". Siehe
+   *  fetch-warnings.ts / pushCivilWarning in planner.ts. */
+  civilWarnings?: CivilWarning[];
+  /** IDs (inkl. Version, siehe CivilWarning.key) bereits vorgelesener Warnungen – wie
+   *  hotlineAnnouncedIds, verhindert Wiederholung derselben Warnung. */
+  civilWarningsAnnouncedIds?: string[];
+  /** Wie markHotlineAnnounced, aber für Warnmeldungen. */
+  markCivilWarningsAnnounced?: (keys: string[]) => void;
   /** KI-Moderationen, Werbung und Nachrichten erst nach Freigabe senden */
   approvalRequired?: boolean;
+};
+
+/** Amtliche Warnmeldung von warnung.bund.de (BBK) – siehe fetch-warnings.ts für die Herkunft der
+ *  Felder (CAP-Format, dieselbe Quelle wie NINA-App / Cell Broadcast). */
+export type CivilWarning = {
+  key: string;
+  id: string;
+  version: number;
+  region: "Saarland" | "Rheinland-Pfalz";
+  source: string;
+  severity: string;
+  urgency: string;
+  type: string;
+  headline: string;
+  description: string;
+  instruction: string;
+  areas: string[];
+  startDate: string;
 };
 
 /** Werbe-Bewerbung: Werbung läuft erst nach Prüfung und Freigabe. */

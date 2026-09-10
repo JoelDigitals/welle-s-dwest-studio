@@ -320,11 +320,14 @@ export async function tryHumanizeHotlineMix(text: string, hostName?: string): Pr
 
 /** Blitzer-Service: kommt ausschließlich aus der Hörer-Hotline und wird deshalb wie das
  *  Hotline-Mix-Segment warm und persönlich vorgelesen – mit Dank an die Melder:innen –, nicht
- *  als trockene Polizeiliste. Fakten bleiben dabei exakt: Straße, Ort, ggf. Richtung und die
- *  Art der Messung dürfen nicht erfunden, verändert oder weggelassen werden. Der Hinweis, sich
- *  ans Tempolimit zu halten, gehört dazu. */
+ *  als trockene Polizeiliste. Straße/Region bleiben exakt, der genaue Punkt (Ausfahrt, Höhe,
+ *  Kilometerangabe) wird bewusst NIE genannt – rechtlich vergleichbar mit dem Verbot von
+ *  Radarwarn-Geräten/-Apps (StVO §23 1c): ein punktgenauer Hinweis im Radio wäre inhaltlich
+ *  dasselbe, nur über Funk. planner.ts (stripExactSpot) entfernt exakte Ortsangaben schon vor
+ *  diesem Prompt, hier zusätzlich als Anweisung, damit die KI so etwas auch nicht neu erfindet.
+ *  Der Hinweis, sich ans Tempolimit zu halten, gehört dazu. */
 const BLITZER_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und liest gerade den Blitzer-Service vor. Alle Blitzer-Meldungen kommen von Hörer:innen aus der Hotline.
-Du bekommst eine rohe Liste mit Blitzer-Meldungen (Region, Straße, Ort, ggf. Details). Verändere NIEMALS die Fakten: Straßen, Orte, Fahrtrichtungen und Details zur Messung dürfen nicht erfunden, verändert oder weggelassen werden. Erfinde keine neuen Blitzer oder Orte dazu.
+Du bekommst eine rohe Liste mit Blitzer-Meldungen (Region, Straße, ggf. grobe Details). Nenne NIEMALS einen exakten Punkt – keine Ausfahrt, keine Anschlussstelle, kein Kreuz/Dreieck, keine "Höhe X"-Angabe, keine Kilometerangabe, keinen Straßenabschnitt zwischen zwei Punkten. Nenne nur die Straße bzw. den allgemeinen Streckenverlauf ("auf der A620", "im Streckenverlauf der B41"). Verändere sonst keine Fakten (Straße, Region, Fahrtrichtung) – erfinde aber auch keinen genaueren Ort dazu, selbst wenn er im Rohtext stünde.
 Bedank dich bei den Hörer:innen fürs Melden und geh kurz, warm und persönlich auf jede Meldung ein, so wie ein Moderator eine Hörer-Meldung vorliest – nicht wie ein abgelesener Polizeibericht und nicht wie eine Aufzählung.
 Erinnere am Ende freundlich daran, sich ans Tempolimit zu halten. Alle Angaben ohne Gewähr.
 Gesprochene Sprache, herzlich, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
@@ -365,6 +368,58 @@ export async function tryHumanizeTraffic(text: string): Promise<string> {
       user: text,
       temperature: 0.7,
       topP: 0.9,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
+/** Amtliche Warnmeldung (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp – dieselbe Quelle wie
+ *  NINA-App und Cell Broadcast/"Warntag"). Wie bei Nachrichten dürfen NIEMALS Fakten oder
+ *  Verhaltenshinweise verändert werden – anders als bei einer normalen Nachricht muss hier
+ *  zusätzlich der komplette Inhalt (auch Details/Verhaltenshinweise) erhalten bleiben, nicht nur
+ *  Kernfakten, weil ein Verhaltenshinweis (z. B. "Fenster und Türen schließen") sicherheitsrelevant
+ *  ist und nicht gekürzt werden darf. */
+const CIVIL_WARNING_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und liest gerade eine amtliche Warnmeldung vor (Bevölkerungsschutz, Wetter, Polizei oder Hochwasser – offizielle Quelle, dieselbe wie die NINA-Warn-App).
+Du bekommst Titel, Beschreibung und ggf. einen Verhaltenshinweis der amtlichen Meldung. Verändere NIEMALS Fakten (Ort, Ereignis, Zeitraum, Zahlen) oder Verhaltenshinweise (z. B. "Fenster und Türen schließen", "Trinkwasser abkochen") – diese müssen VOLLSTÄNDIG und wortgetreu sinngemäß erhalten bleiben, nichts darf weggelassen werden. Erfinde nichts hinzu.
+Wandle den amtlichen, oft behördlich-trockenen Text in eine klar gesprochene, ernste Radioansage um – ruhig, sachlich, mit der Autorität einer echten Warnmeldung, nicht beiläufig oder locker wie normale Moderation.
+Kündige es am Anfang klar als amtliche Warnmeldung an (z. B. "Eine wichtige Meldung für unsere Hörerinnen und Hörer" oder "Achtung, eine amtliche Warnung").
+Gesprochene Sprache, ernst und klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
+
+/** Wie tryHumanizeNews, aber mit dem Warnmeldungs-Prompt (Fakten UND Verhaltenshinweise fest). */
+export async function tryHumanizeCivilWarning(text: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: CIVIL_WARNING_SYSTEM,
+      user: text,
+      temperature: 0.5,
+      topP: 0.9,
+    });
+    return rewritten.trim() || text;
+  } catch {
+    return text;
+  }
+}
+
+/** "Tagesaktuell"-Moderation: reagiert auf eine ECHTE aktuelle Meldung statt auf eine erfundene,
+ *  zeitlose CAT_TALK-Anekdote (siehe pushModeration in planner.ts) – wie beim Korrespondent:innen-
+ *  Bericht darf die Meldung selbst (Fakten, Ort, Zahlen, Namen) NIE verändert werden, aber die
+ *  Moderation baut eine persönliche, freie Reaktion/Einschätzung/Meinung drumherum, statt die
+ *  Meldung nur trocken vorzulesen. */
+const NEWS_REACTION_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und greifst gerade eine aktuelle Meldung im Studio-Talk auf.
+Du bekommst eine echte aktuelle Meldung (Schlagzeile + Kurztext). Verändere NIEMALS die Fakten darin (Ort, Ereignis, Namen, Zahlen) – nur die Erzählform darf sich ändern.
+Sprich wie ein Mensch, der das gerade selbst gelesen hat und live im Studio darüber spricht: kurz einordnen, was passiert ist, dann eine eigene Meinung, Beobachtung oder einen persönlichen Bezug dazu geben – nicht nur trocken vorlesen wie eine Nachricht.
+2 bis 4 kurze gesprochene Sätze, keine Regieanweisungen, keine Emojis.`;
+
+/** Wie tryHumanizeCorrespondentReport, aber aus der Studio-Perspektive (nicht "vor Ort"). */
+export async function tryHumanizeNewsReaction(text: string, hostName?: string): Promise<string> {
+  try {
+    const { text: rewritten } = await generateText({
+      system: NEWS_REACTION_SYSTEM,
+      user: `Sprecher:in: ${hostName ?? "Alex"}\n${text}`,
+      temperature: 0.9,
+      topP: 0.95,
     });
     return rewritten.trim() || text;
   } catch {

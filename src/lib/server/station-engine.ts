@@ -9,6 +9,8 @@ import type {
 } from "@/lib/broadcast-types";
 import { fetchNews } from "./fetch-news";
 import { fetchTraffic } from "./fetch-traffic";
+import { fetchWarnings } from "./fetch-warnings";
+import type { CivilWarning } from "@/lib/broadcast-types";
 import { searchFreeMusic } from "./freemusic-search";
 import { curateFreeMusic, FREE_MUSIC_QUERIES } from "@/lib/free-music-pool";
 import { listHotlineReports, listAnnouncedHotlineIds, markHotlineAnnounced } from "./hotline-store";
@@ -25,6 +27,8 @@ import {
   tryHumanizeHotlineMix,
   tryHumanizeTraffic,
   tryHumanizeBlitzer,
+  tryHumanizeCivilWarning,
+  tryHumanizeNewsReaction,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
@@ -53,6 +57,10 @@ const REFILL_THRESHOLD_SECONDS = 8 * 60;
 
 const NEWS_TTL_MS = 5 * 60_000;
 const TRAFFIC_TTL_MS = 3 * 60_000;
+// Amtliche Warnungen (Bevölkerungsschutz/Wetter/Polizei/Hochwasser) dürfen nicht lange veraltet
+// sein – kürzeres Intervall als Nachrichten/Verkehr, da eine neue Warnung so schnell wie möglich
+// on air soll.
+const WARNINGS_TTL_MS = 2 * 60_000;
 const FREEMUSIC_TTL_MS = 60 * 60_000;
 const MEDIA_TTL_MS = 30_000;
 const SCHEDULED_SHOWS_TTL_MS = 30_000;
@@ -77,6 +85,10 @@ type EngineState = {
   preparing: Set<string>;
   news: { items: NewsFeedItem[]; at: number };
   traffic: { items: TrafficFeedItem[]; at: number };
+  /** Amtliche Warnungen (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp) für Saarland/RLP. */
+  warnings: { items: CivilWarning[]; at: number };
+  /** "<id>:<version>"-Schlüssel bereits vorgelesener Warnungen – verhindert Wiederholung. */
+  warningsAnnounced: Set<string>;
   freeMusic: { items: FreeTrack[]; at: number };
   media: { items: MediaRecord[]; at: number };
   /** Im Voraus geplante Sendetermine (Datum/Uhrzeit/Titel/Host) – die Engine schaltet zu ihrer
@@ -115,6 +127,8 @@ function getState(): EngineState {
     preparing: new Set(),
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
+    warnings: { items: [], at: 0 },
+    warningsAnnounced: new Set(),
     freeMusic: { items: [], at: 0 },
     media: { items: [], at: 0 },
     scheduledShows: { items: [], at: 0 },
@@ -220,6 +234,15 @@ async function refreshFeeds(state: EngineState) {
         .catch(() => undefined),
     );
   }
+  if (now - state.warnings.at > WARNINGS_TTL_MS) {
+    jobs.push(
+      fetchWarnings()
+        .then((r) => {
+          state.warnings = { items: r.items, at: now };
+        })
+        .catch(() => undefined),
+    );
+  }
   if (now - state.media.at > MEDIA_TTL_MS) {
     jobs.push(
       listStoredMedia()
@@ -270,6 +293,9 @@ function buildContext(state: EngineState): PlanContext {
     dailyThemes: state.dailyThemes.items,
     hotlineAnnouncedIds: listAnnouncedHotlineIds(),
     markHotlineAnnounced,
+    civilWarnings: state.warnings.items,
+    civilWarningsAnnouncedIds: [...state.warningsAnnounced],
+    markCivilWarningsAnnounced: (keys) => keys.forEach((k) => state.warningsAnnounced.add(k)),
     approvalRequired: false,
   };
 }
@@ -331,25 +357,29 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
   // die zweite Stimme hier per KI echt auf das Thema, über das der Hauptmoderator gerade
   // gesprochen hat (dialogueTopic), damit ein echtes Gespräch statt zweier Solo-Ansagen entsteht.
   const spokenText =
-    item.kind === "moderation" && item.dialogueTopic
-      ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
-      : item.kind === "moderation" && item.handoff
-        ? await tryHumanizeHandoff(text)
-        : item.kind === "moderation" && item.correspondentReport
-          ? await tryHumanizeCorrespondentReport(text)
-          : item.kind === "moderation" && item.hotlineMix
-            ? await tryHumanizeHotlineMix(text, item.hostName)
-            : item.kind === "moderation"
-              ? await tryHumanizeModeration(text, item.hostName)
-              : item.kind === "slogan"
-                ? await tryGenerateStationId(text)
-                : item.kind === "news"
-                  ? await tryHumanizeNews(text)
-                  : item.kind === "traffic" && item.blitzerService
-                    ? await tryHumanizeBlitzer(text, item.hostName)
-                    : item.kind === "traffic"
-                      ? await tryHumanizeTraffic(text)
-                      : text;
+    item.civilWarning
+      ? await tryHumanizeCivilWarning(text)
+      : item.kind === "moderation" && item.dialogueTopic
+        ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
+        : item.kind === "moderation" && item.handoff
+          ? await tryHumanizeHandoff(text)
+          : item.kind === "moderation" && item.correspondentReport
+            ? await tryHumanizeCorrespondentReport(text)
+            : item.kind === "moderation" && item.hotlineMix
+              ? await tryHumanizeHotlineMix(text, item.hostName)
+              : item.kind === "moderation" && item.newsGrounded
+                ? await tryHumanizeNewsReaction(text, item.hostName)
+                : item.kind === "moderation"
+                  ? await tryHumanizeModeration(text, item.hostName)
+                : item.kind === "slogan"
+                  ? await tryGenerateStationId(text)
+                  : item.kind === "news"
+                    ? await tryHumanizeNews(text)
+                    : item.kind === "traffic" && item.blitzerService
+                      ? await tryHumanizeBlitzer(text, item.hostName)
+                      : item.kind === "traffic"
+                        ? await tryHumanizeTraffic(text)
+                        : text;
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste
