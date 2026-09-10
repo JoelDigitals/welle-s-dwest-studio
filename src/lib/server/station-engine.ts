@@ -38,6 +38,7 @@ import { listScheduledShows } from "./scheduled-shows-store";
 import { getTopicForDate, listRecentTopics, recordTopic } from "./show-topics-store";
 import { SHOWS } from "@/lib/radio-config";
 import { berlinDateKey } from "@/lib/berlin-time";
+import { CURIOSITY_DAYS } from "@/lib/curiosity-days";
 
 /**
  * Autonome Sende-Engine: läuft dauerhaft im Server-Prozess, unabhängig davon, ob irgendwo ein
@@ -182,6 +183,10 @@ async function ensureDailyThemes(state: EngineState) {
     return;
   }
   const topNews = state.news.items.slice(0, 5).map((n) => n.headline);
+  // Echte, verifizierte Kuriositäts-/Aktionstage des heutigen Kalendertags (z. B. "Tag des
+  // Fleischkäses") – Datenquelle kuriose-feiertage.de (siehe curiosity-days.ts). "today" ist
+  // "YYYY-MM-DD", die letzten 5 Zeichen ergeben den "MM-DD"-Schlüssel der Tabelle.
+  const curiosityDays = CURIOSITY_DAYS[today.slice(5)] ?? [];
   for (const show of SHOWS) {
     if (items[show.id]) continue;
     try {
@@ -195,6 +200,7 @@ async function ensureDailyThemes(state: EngineState) {
         direction: show.topics.join(", "),
         recentTopics: recent.map((r) => r.topic),
         topNews,
+        curiosityDays,
         fallback: show.topics[0] ?? show.title,
       });
       await recordTopic(show.id, theme, today);

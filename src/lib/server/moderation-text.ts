@@ -250,23 +250,32 @@ export async function tryGenerateCoHostReply(
 /** Tagesthema einer Sendung: soll sich innerhalb von 90 Tagen NICHT wiederholen – außer eine
  *  große, andauernde Nachrichtenlage rechtfertigt ausdrücklich eine thematische Fortsetzung
  *  (z. B. nach einem Anschlag zwei Tage lang Sicherheit/Prävention). Die KI bekommt die zuletzt
- *  verwendeten Themen als Sperrliste und die aktuellen Top-Meldungen als Kontext. */
+ *  verwendeten Themen als Sperrliste, die aktuellen Top-Meldungen als Kontext – UND, wenn
+ *  vorhanden, echte, verifizierte Kuriositäts-/Aktionstage des heutigen Kalendertags (siehe
+ *  curiosity-days.ts, Datenquelle kuriose-feiertage.de), die klar bevorzugt werden sollen statt
+ *  komplett frei zu erfinden ("Tag der rücksichtsvollen Autofahrt" statt eines beliebigen,
+ *  austauschbaren Rubrik-Ersatzthemas). */
 const DAILY_THEME_SYSTEM = `Du bist Redakteur:in bei "Welle Südwest" und wählst das Tagesthema für eine Sendung.
-Du bekommst: die grobe Themenrichtung der Sendung, eine Liste bereits verwendeter Themen der letzten 90 Tage (NICHT wiederholen), und die aktuellen Top-Nachrichten der Region.
-Erfinde EIN neues, konkretes Tagesthema (3 bis 8 Wörter, wie eine Rubrik-Überschrift, kein ganzer Satz) zur genannten Themenrichtung, das NICHT in der Sperrliste steht.
-Ausnahme: Wenn eine der aktuellen Top-Nachrichten ein großes, andauerndes Ereignis ist (z. B. Anschlag, Katastrophe, akute Sicherheitslage), darfst du bewusst ein passendes, verwandtes Thema wählen (z. B. Sicherheit, Prävention, Umgang damit) – auch wenn es einem kürzlich verwendeten Thema ähnelt, denn das ist dann redaktionell gewollt.
-Antworte NUR mit dem Thema selbst, keine Erklärung, keine Anführungszeichen.`;
+Du bekommst: die grobe Themenrichtung der Sendung, eine Liste bereits verwendeter Themen der letzten 90 Tage (NICHT wiederholen), die aktuellen Top-Nachrichten der Region, und – falls vorhanden – echte, verifizierte Kuriositäts-/Aktionstage des heutigen Kalendertags.
+Sind echte Kuriositätstage angegeben: Wähle BEVORZUGT einen davon als Tagesthema (leicht auf Radio-Rubrik-Länge gekürzt/umformuliert ist erlaubt, der Kern muss aber erhalten bleiben – erfinde ihn nicht frei um). Passt keiner davon zur Themenrichtung oder ist er schon in der Sperrliste, erfinde stattdessen wie bisher ein neues Thema zur Themenrichtung.
+Sind keine Kuriositätstage angegeben: Erfinde EIN neues, konkretes Tagesthema (3 bis 8 Wörter, wie eine Rubrik-Überschrift, kein ganzer Satz) zur genannten Themenrichtung, das NICHT in der Sperrliste steht.
+Ausnahme: Wenn eine der aktuellen Top-Nachrichten ein großes, andauerndes Ereignis ist (z. B. Anschlag, Katastrophe, akute Sicherheitslage), darfst du bewusst ein passendes, verwandtes Thema wählen (z. B. Sicherheit, Prävention, Umgang damit) – auch wenn es einem kürzlich verwendeten Thema ähnelt oder einem Kuriositätstag vorgezogen wird, denn das ist dann redaktionell gewollt.
+Antworte NUR mit dem Thema selbst (3 bis 8 Wörter), keine Erklärung, keine Anführungszeichen.`;
 
 export async function generateDailyTheme(opts: {
   direction: string;
   recentTopics: string[];
   topNews: string[];
+  curiosityDays?: string[];
 }): Promise<string> {
   const user = `Themenrichtung der Sendung: ${opts.direction}
 Bereits verwendete Themen der letzten 90 Tage (nicht wiederholen): ${
     opts.recentTopics.length ? opts.recentTopics.join(", ") : "keine"
   }
 Aktuelle Top-Nachrichten: ${opts.topNews.length ? opts.topNews.join(" | ") : "keine besonderen"}
+Echte Kuriositätstage heute (bevorzugt verwenden, wenn passend): ${
+    opts.curiosityDays?.length ? opts.curiosityDays.join(" | ") : "keine bekannt"
+  }
 Wähle jetzt das Tagesthema.`;
   const { text } = await generateText({
     system: DAILY_THEME_SYSTEM,
@@ -282,6 +291,7 @@ export async function tryGenerateDailyTheme(opts: {
   direction: string;
   recentTopics: string[];
   topNews: string[];
+  curiosityDays?: string[];
   fallback: string;
 }): Promise<string> {
   try {
