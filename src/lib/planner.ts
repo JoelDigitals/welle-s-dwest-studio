@@ -23,6 +23,7 @@ import type {
   PlanItem,
 } from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
+import { exactSection, sectionForPlace } from "./autobahn-exits";
 import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
 
 let counter = 0;
@@ -93,6 +94,10 @@ const CONNECT = [
   "Kommen wir zu diesem Thema.",
   "Auch das ist heute wichtig.",
   "Und noch eine Meldung.",
+  // Leere Einträge: manchmal geht es ganz ohne Übergangsfloskel direkt weiter – klingt sonst bei
+  // acht Meldungen hintereinander wie eine stur abgehakte Liste statt einem echten Nachrichtenblock.
+  "",
+  "",
 ];
 
 type Story = { region: string; headline: string; body: string; author?: string };
@@ -156,9 +161,14 @@ function firstSentence(body: string): string {
 function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: number) {
   // Kurznachrichten waren bisher nur nackte Schlagzeilen ohne jeden Kontext – jetzt weniger
   // Meldungen (nur das Wichtigste vom Wichtigsten), aber jede davon ein echter kurzer
-  // Nachrichtensatz (Schlagzeile + ein kurzer Kontextsatz) statt einer trockenen Liste.
-  const list = stories.slice(0, mode === "full" ? 8 : 4);
+  // Nachrichtensatz (Schlagzeile + ein kurzer Kontextsatz) statt einer trockenen Liste. Auch
+  // "full" bewusst auf 6 statt 8 Meldungen begrenzt – acht Meldungen hintereinander wirkten wie
+  // eine lange, abgehakte Liste statt einem kompakten, gut hörbaren Nachrichtenblock.
+  const list = stories.slice(0, mode === "full" ? 6 : 4);
   let prevRegion: string | undefined;
+  // Echte Zufallsauswahl statt der deterministischen index-%-length-Wahl (pick()): bei fünf bis
+  // sieben Meldungen in Folge landete pick() sonst leicht mehrfach auf derselben Übergangsfloskel
+  // innerhalb desselben Blocks – klang bei jeder Sendung wieder abgehackt gleich.
   const parts = list.map((s, i) => {
     const lead = regionLead(s.region, prevRegion, i);
     prevRegion = s.region;
@@ -169,7 +179,8 @@ function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: 
     // zur nächsten Meldung weiter). Echte Korrespondent:innen-Schalten laufen jetzt separat über
     // pushCorrespondent im Sendeplan, nicht als Ankündigung mitten in den Nachrichten.
     const author = mode === "full" && s.author ? ` Von ${s.author}.` : "";
-    const connect = i === 0 ? "" : `${pick(CONNECT, i + at)} `;
+    const connector = CONNECT[Math.floor(Math.random() * CONNECT.length)];
+    const connect = i === 0 || !connector ? "" : `${connector} `;
     return `${connect}${lead ? `${lead}: ` : ""}${head}${body}${author}`;
   });
   const outro =
@@ -281,11 +292,21 @@ function directionOf(text: string) {
   return m ? `in Richtung ${m[1]}` : "";
 }
 
-/** Eine natürlich klingende Verkehrsmeldung im Radiostil – die Position wird BEWUSST nur allgemein
- *  genannt ("im Streckenverlauf der A6"), nie punktgenau (keine Ausfahrt, kein Kreuz, keine
- *  "zwischen X und Y"-Angabe). Genau wie beim Blitzer-Service (stripExactSpot) soll ein Radio-
- *  Verkehrshinweis keine exakte Stelle nennen, an der gerade etwas ist – das war vorher zu genau
- *  und wirkte weniger wie echter Verkehrsfunk als wie eine Navi-Ansage. */
+/** Ob und was der Meldungstext über einen Polizeieinsatz vor Ort verrät – bei Unfällen soll das
+ *  immer klar gesagt werden, nicht offenbleiben. */
+function policeStatus(raw: string): string {
+  if (/polizei[^.]{0,25}(vor ort|im einsatz|ist da|eingetroffen)|vor ort[^.]{0,25}polizei/i.test(raw)) {
+    return "Die Polizei ist vor Ort.";
+  }
+  if (/polizei/i.test(raw)) return "Die Polizei wurde informiert.";
+  return "Zum Polizeieinsatz liegen uns noch keine Angaben vor.";
+}
+
+/** Eine natürlich klingende Verkehrsmeldung im Radiostil. Die Position wird bei normalem Stau/
+ *  Baustelle/Sperrung bewusst nur allgemein genannt ("im Streckenverlauf der A6"), nie punktgenau –
+ *  genau wie beim Blitzer-Service (stripExactSpot) soll das keine Navi-genaue Stelle verraten.
+ *  Bei einem UNFALL gilt das Gegenteil: Sicherheitsrelevant, deshalb so genau wie möglich (Ausfahrt/
+ *  Streckenabschnitt aus der Anschlussstellen-Tabelle) – dazu klar sagen, ob die Polizei vor Ort ist. */
 function trafficLine(
   item: { road: string; headline: string; message: string; place?: string },
   index: number,
@@ -299,17 +320,27 @@ function trafficLine(
     .replace(/\bASt\.?\s+/g, "Ausfahrt ")
     .replace(/\bRi\.\s*/g, "Richtung ");
   const road = item.road?.trim() || "";
-  const where = "im Streckenverlauf";
+  const isAccident = /unfall/i.test(raw);
+  const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
+  const where = isAccident
+    ? exactSection(road, original) ||
+      exactSection(road, raw) ||
+      sectionForPlace(road, item.place ?? "") ||
+      sectionForPlace(road, textPlace) ||
+      betweenOf(raw) ||
+      "im Streckenverlauf"
+    : "im Streckenverlauf";
   const dir = directionOf(raw);
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);
   const km = kmOf(raw, index + road.length);
   const minutes = minutesOf(raw, km);
   const place = clean(`${dir} ${where}`) || "im Streckenverlauf";
+  const policeNote = isAccident ? ` ${policeStatus(raw)}` : "";
 
   if (/vollsperr|gesperrt/i.test(raw)) {
     return clean(
-      `${road ? `Auf der ${road}` : "Achtung"} ${place} ist die Strecke ${reason} gesperrt. Bitte weiträumig umfahren.`,
+      `${road ? `Auf der ${road}` : "Achtung"} ${place} ist die Strecke ${reason} gesperrt. Bitte weiträumig umfahren.${policeNote}`,
     );
   }
 
@@ -350,7 +381,7 @@ function trafficLine(
   return clean(
     `${opener} ${art}${reason ? ` ${reason}` : ""}. ${tail}${
       urgent ? " Bitte bilden Sie eine Rettungsgasse." : ""
-    }`,
+    }${policeNote}`,
   );
 }
 
@@ -1129,6 +1160,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
   let musicIndex = 0;
   let generalIndex = 0;
   let lastSong: string | undefined;
+  /** Zuletzt gespielte Stundenanfangs-Jingle-ID – verhindert, dass bei mehreren verfügbaren
+   *  Jingles per Zufall zufällig doch wieder dieselbe direkt danach nochmal dran ist. */
+  let lastHourJingleId: string | null = null;
   /** Show/Host der vorigen Stunde – für die Übergabe an die nächste Sendung. */
   let prevShow: Show | undefined;
   let prevHost: Host | undefined;
@@ -1276,8 +1310,17 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
 
     const pushJingle = () => {
       generalIndex++;
-      const j = jingles.length ? pick(jingles, generalIndex) : null;
+      // Echte Zufallsauswahl statt der deterministischen index-%-length-Wahl (pick()) – bei nur
+      // wenigen Jingles im Slot landete pick() sonst leicht immer wieder auf demselben (z. B.
+      // wenn der Index-Zuwachs pro Stunde zufällig ein Vielfaches von jingles.length ist), und
+      // schließt zusätzlich das zuletzt gespielte aus, solange es Alternativen gibt.
+      const jingleChoices =
+        jingles.length > 1 ? jingles.filter((m) => m.id !== lastHourJingleId) : jingles;
+      const j = jingleChoices.length
+        ? jingleChoices[Math.floor(Math.random() * jingleChoices.length)]
+        : null;
       if (j) {
+        lastHourJingleId = j.id;
         push({
           kind: "jingle",
           title: j.title,
@@ -1670,7 +1713,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           handoff: true,
         });
       }
-      pushJingle();
+      // Nicht mehr zu jeder vollen Stunde zwingend eine Senderkennung – bei wenig Auswahl in der
+      // Bibliothek wirkte das schnell wie immer dasselbe Jingle im Kreis.
+      if (Math.random() < 0.7) pushJingle();
       pushNewsBlock("full", hourStart.getTime());
       if (isShowStart) {
         const opener = `${showTitleWithHost(show, host)}. Vier Stunden ${show.colour} für das Saarland und Rheinland-Pfalz. Heute sprechen wir unter anderem über ${show.topics

@@ -105,6 +105,7 @@ Du bekommst einen fertigen Nachrichtentext (Anmoderation mit Themenüberblick OD
 Wandle Schlagzeilen-artige, geschriebene Formulierungen (wie eine Zeitungsüberschrift) in natürliche, flüssig gesprochene Sätze um, so wie ein echter Nachrichtensprecher sie vorlesen würde – mit normaler Satzmelodie, nicht wie eine Aufzählung.
 JEDE einzelne Meldung muss ein vollständiger, grammatikalisch korrekter gesprochener Satz mit Subjekt und Verb sein – niemals ein bloßes Schlagzeilen-Fragment ohne Verb (z. B. nicht "Stromausfall in mehreren Stadtteilen", sondern "In mehreren Stadtteilen ist der Strom ausgefallen").
 Nenne die Region (Saarland, Rheinland-Pfalz, bundesweit, international) nicht bei jeder einzelnen Meldung erneut – nur wenn sich die Region gegenüber der vorherigen Meldung tatsächlich ändert, sonst wirkt es wie eine stur abgehakte Liste statt echtem Radio.
+Die Übergänge zwischen den Meldungen dürfen sich NICHT immer gleich anhören ("Weiter geht es mit dieser Meldung" o. Ä. nicht wiederholt hintereinander) – variiere die Übergangsformulierung von Meldung zu Meldung wirklich, manchmal auch ganz ohne Übergangsfloskel, direkt mit der nächsten Meldung beginnend, damit es wie ein zusammenhängender Nachrichtenblock klingt und nicht wie eine abgehakte Liste einzelner Punkte.
 Halte dich an die vorgegebene Reihenfolge und Anzahl der Meldungen, kürze nichts weg und füge nichts hinzu.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
