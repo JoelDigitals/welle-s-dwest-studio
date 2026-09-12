@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   deleteMedia,
+  getMedia,
   listMedia,
   putMedia,
   readAudioDuration,
@@ -192,5 +193,21 @@ export function useMediaLibrary() {
     [refresh],
   );
 
-  return { media, loading, error, refresh, upload, addOnline, remove };
+  /** Metadaten eines bereits hochgeladenen Elements nachträglich ändern (z. B. Slot oder
+   *  Zeitraum eines Jingles) – Datei/Stream bleibt unverändert, nur die Metadaten werden
+   *  überschrieben. syncMediaToServer macht dabei ein Upsert (dieselbe id), kein separater
+   *  Server-Endpunkt nötig. */
+  const update = useCallback(
+    async (id: string, patch: Partial<Omit<MediaRecord, "id" | "kind" | "blob">>) => {
+      const existing = await getMedia(id);
+      if (!existing) return;
+      const record: MediaRecord = { ...existing, ...patch };
+      await putMedia(record);
+      void syncMediaToServer(record);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  return { media, loading, error, refresh, upload, addOnline, remove, update };
 }

@@ -1136,7 +1136,10 @@ function mediaOf(media: MediaRecord[], kind: MediaRecord["kind"], slot?: MediaRe
   return matched.length ? [...matched, ...general] : general;
 }
 
-function adIsActive(m: MediaRecord, at: number) {
+/** Gilt für Werbung UND Jingles/Slogans mit gesetztem Zeitraum (runFrom/runUntil) – z. B. ein
+ *  Jingle, der nur über die Adventszeit oder ein bestimmtes Event laufen soll. Ohne gesetzten
+ *  Zeitraum läuft ein Element wie bisher unbegrenzt. */
+function mediaIsActive(m: MediaRecord, at: number) {
   if (m.runFrom && at < m.runFrom) return false;
   if (m.runUntil && at > m.runUntil) return false;
   return true;
@@ -1241,9 +1244,12 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
   const approval = ctx.approvalRequired ?? false;
   const items: PlanItem[] = [];
   const pool = musicPool(ctx);
-  const jingles = mediaOf(ctx.media, "jingle", "stundenanfang");
-  const newsJingles = mediaOf(ctx.media, "jingle", "nachrichten");
-  const slogans = mediaOf(ctx.media, "slogan", "allgemein");
+  // Ungefiltert nach Zeitraum - Jingles/Slogans dürfen wie Werbung einen runFrom/runUntil-Zeitraum
+  // haben (z. B. nur zur Adventszeit oder für ein bestimmtes Event). Gefiltert wird erst bei der
+  // tatsächlichen Auswahl (siehe pushJingle/pushTrenner), mit der jeweils aktuellen Uhrzeit im Plan.
+  const allJingles = mediaOf(ctx.media, "jingle", "stundenanfang");
+  const allNewsJingles = mediaOf(ctx.media, "jingle", "nachrichten");
+  const allSlogans = mediaOf(ctx.media, "slogan", "allgemein");
   const artistPlays = new Map<string, number>();
   const usedModeration = new Set<string>();
   /** Bereits verwendete Witze, Smalltalks und Rubriktexte im Plan. */
@@ -1347,6 +1353,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     /** Trenner-Sound zwischen den Meldungen. */
     const pushTrenner = (label: string) => {
       generalIndex++;
+      const newsJingles = allNewsJingles.filter((m) => mediaIsActive(m, cursor));
       const j = newsJingles.length ? pick(newsJingles, generalIndex) : null;
       if (!j) return;
       push({
@@ -1432,6 +1439,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
 
     const pushJingle = () => {
       generalIndex++;
+      // Nur Jingles, die gerade im Zeitraum aktiv sind (falls beim Upload ein runFrom/runUntil
+      // gesetzt wurde) - ohne gesetzten Zeitraum wie bisher immer aktiv.
+      const jingles = allJingles.filter((m) => mediaIsActive(m, cursor));
       // Echte Zufallsauswahl statt der deterministischen index-%-length-Wahl (pick()) – bei nur
       // wenigen Jingles im Slot landete pick() sonst leicht immer wieder auf demselben (z. B.
       // wenn der Index-Zuwachs pro Stunde zufällig ein Vielfaches von jingles.length ist), und
@@ -1454,6 +1464,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         });
         return;
       }
+      const slogans = allSlogans.filter((m) => mediaIsActive(m, cursor));
       const s = slogans.length ? pick(slogans, generalIndex) : null;
       if (s) {
         push({
@@ -1480,7 +1491,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       const advertisers = campaigns.map((c) => c.advertiser.toLowerCase());
       const uploaded = mediaOf(ctx.media, "ad").filter(
         (m) =>
-          adIsActive(m, cursor) &&
+          mediaIsActive(m, cursor) &&
           advertisers.some((a) => `${m.artist} ${m.title}`.toLowerCase().includes(a)),
       );
       if (uploaded.length) {

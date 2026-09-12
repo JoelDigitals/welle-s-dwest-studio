@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Cloud, Search, Trash2, Upload } from "lucide-react";
+import { Cloud, Pencil, Search, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,18 +31,24 @@ const SLOTS: Array<{ id: NonNullable<MediaRecord["slot"]>; label: string }> = [
   { id: "werbung", label: "Vor der Werbung" },
 ];
 
+/** Jingles/Slogans dürfen wie Werbung einen Zeitraum bekommen (z. B. nur zur Adventszeit oder für
+ *  ein bestimmtes Event) - ohne Zeitraum läuft ein Element wie bisher unbegrenzt. */
+const SCHEDULABLE_KINDS: MediaKind[] = ["ad", "jingle", "slogan"];
+
 export function LibraryPanel({
   media,
   error,
   upload,
   addOnline,
   remove,
+  update,
 }: {
   media: MediaRecord[];
   error: string | null;
   upload: (files: File[], meta: UploadMeta) => Promise<void>;
   addOnline: (track: OnlineTrack) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  update: (id: string, patch: Partial<Omit<MediaRecord, "id" | "kind" | "blob">>) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<MediaKind>("music");
@@ -62,13 +68,14 @@ export function LibraryPanel({
     if (!files?.length) return;
     setBusy(true);
     try {
+      const schedulable = SCHEDULABLE_KINDS.includes(kind);
       await upload(Array.from(files), {
         kind,
         artist,
         category,
         slot: kind === "jingle" || kind === "slogan" ? slot : null,
-        runFrom: kind === "ad" && runFrom ? new Date(runFrom).getTime() : undefined,
-        runUntil: kind === "ad" && runUntil ? new Date(runUntil).getTime() : undefined,
+        runFrom: schedulable && runFrom ? new Date(runFrom).getTime() : undefined,
+        runUntil: schedulable && runUntil ? new Date(runUntil).getTime() : undefined,
         perHour: kind === "ad" ? Number(perHour) || 1 : undefined,
       });
       setArtist("");
@@ -145,26 +152,30 @@ export function LibraryPanel({
           </div>
         )}
 
-        {kind === "ad" && (
-          <div className="grid gap-2 sm:grid-cols-3">
+        {SCHEDULABLE_KINDS.includes(kind) && (
+          <div className={`grid gap-2 ${kind === "ad" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Kampagne von</Label>
+              <Label className="text-xs text-muted-foreground">
+                {kind === "ad" ? "Kampagne von" : "Läuft ab (optional)"}
+              </Label>
               <Input type="date" value={runFrom} onChange={(e) => setRunFrom(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">bis</Label>
               <Input type="date" value={runUntil} onChange={(e) => setRunUntil(e.target.value)} />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Spots/Stunde</Label>
-              <Input
-                type="number"
-                min={1}
-                max={6}
-                value={perHour}
-                onChange={(e) => setPerHour(e.target.value)}
-              />
-            </div>
+            {kind === "ad" && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Spots/Stunde</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={perHour}
+                  onChange={(e) => setPerHour(e.target.value)}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -232,28 +243,146 @@ export function LibraryPanel({
             <p className="text-sm text-muted-foreground">Noch keine Dateien hochgeladen.</p>
           )}
           {media.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{m.title}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {KINDS.find((k) => k.id === m.kind)?.label} · {m.artist || m.category} ·{" "}
-                  {formatClock(m.duration)}
-                  {m.slot && m.slot !== "allgemein"
-                    ? ` · ${SLOTS.find((s) => s.id === m.slot)?.label}`
-                    : ""}
-                  {m.streamUrl ? " · Online (CC)" : ""}
-                </p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => void remove(m.id)}>
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
+            <MediaRow key={m.id} media={m} update={update} remove={remove} />
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+/** "2026-03-05" aus einem Epoch-ms-Zeitstempel, fürs date-Input – leer, wenn kein Wert gesetzt ist. */
+function dateInputValue(ms?: number): string {
+  return ms ? new Date(ms).toISOString().slice(0, 10) : "";
+}
+
+/** Ein Eintrag der Bibliothek – normal nur die Übersicht, per "Bearbeiten" ein kleines Inline-
+ *  Formular (Slot + Zeitraum, bei Werbung zusätzlich Spots/Stunde), damit ein einmal hochgeladenes
+ *  Jingle/Slogan/Werbespot nicht für jede Änderung erst gelöscht und neu hochgeladen werden muss. */
+function MediaRow({
+  media: m,
+  update,
+  remove,
+}: {
+  media: MediaRecord;
+  update: (id: string, patch: Partial<Omit<MediaRecord, "id" | "kind" | "blob">>) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [slot, setSlot] = useState<NonNullable<MediaRecord["slot"]>>(m.slot ?? "allgemein");
+  const [runFrom, setRunFrom] = useState(dateInputValue(m.runFrom));
+  const [runUntil, setRunUntil] = useState(dateInputValue(m.runUntil));
+  const [perHour, setPerHour] = useState(String(m.perHour ?? 2));
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setSlot(m.slot ?? "allgemein");
+    setRunFrom(dateInputValue(m.runFrom));
+    setRunUntil(dateInputValue(m.runUntil));
+    setPerHour(String(m.perHour ?? 2));
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await update(m.id, {
+        slot: m.kind === "jingle" || m.kind === "slogan" ? slot : m.slot,
+        runFrom: runFrom ? new Date(runFrom).getTime() : undefined,
+        runUntil: runUntil ? new Date(runUntil).getTime() : undefined,
+        perHour: m.kind === "ad" ? Number(perHour) || 1 : m.perHour,
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+        <p className="truncate text-sm font-semibold">{m.title}</p>
+        {(m.kind === "jingle" || m.kind === "slogan") && (
+          <Select value={slot} onValueChange={(v) => setSlot(v as typeof slot)}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SLOTS.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <div className={`grid gap-2 ${m.kind === "ad" ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Läuft ab</Label>
+            <Input
+              type="date"
+              className="h-8 text-xs"
+              value={runFrom}
+              onChange={(e) => setRunFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">bis</Label>
+            <Input
+              type="date"
+              className="h-8 text-xs"
+              value={runUntil}
+              onChange={(e) => setRunUntil(e.target.value)}
+            />
+          </div>
+          {m.kind === "ad" && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Spots/Stunde</Label>
+              <Input
+                type="number"
+                min={1}
+                max={6}
+                className="h-8 text-xs"
+                value={perHour}
+                onChange={(e) => setPerHour(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+            <X className="size-3.5" /> Abbrechen
+          </Button>
+          <Button size="sm" disabled={saving} onClick={() => void save()}>
+            {saving ? "Speichert…" : "Speichern"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{m.title}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {KINDS.find((k) => k.id === m.kind)?.label} · {m.artist || m.category} ·{" "}
+          {formatClock(m.duration)}
+          {m.slot && m.slot !== "allgemein" ? ` · ${SLOTS.find((s) => s.id === m.slot)?.label}` : ""}
+          {m.runFrom || m.runUntil
+            ? ` · ${dateInputValue(m.runFrom) || "…"} – ${dateInputValue(m.runUntil) || "…"}`
+            : ""}
+          {m.streamUrl ? " · Online (CC)" : ""}
+        </p>
+      </div>
+      {m.kind !== "recording" && (
+        <Button variant="ghost" size="icon" onClick={startEdit}>
+          <Pencil className="size-4" />
+        </Button>
+      )}
+      <Button variant="ghost" size="icon" onClick={() => void remove(m.id)}>
+        <Trash2 className="size-4" />
+      </Button>
     </div>
   );
 }

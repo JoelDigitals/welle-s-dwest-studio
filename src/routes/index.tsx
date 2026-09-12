@@ -412,6 +412,7 @@ function Index() {
               upload={library.upload}
               addOnline={library.addOnline}
               remove={library.remove}
+              update={library.update}
             />
           </TabsContent>
 
