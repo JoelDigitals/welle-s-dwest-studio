@@ -558,9 +558,18 @@ export function stripExactSpot(text: string): string {
   );
 }
 
+/** Verschiedene Einstiege für den Blitzer-Service, damit er nicht jedes Mal wortgleich beginnt. */
+const BLITZER_INTRO = [
+  "Und jetzt der Blitzer-Service für Saarland und Rheinland-Pfalz.",
+  "Kommen wir zum Blitzer-Service für Saarland und Rheinland-Pfalz.",
+  "Der Blitzer-Service auf Welle Südwest.",
+];
+
 /** Blitzer-Service – ausschließlich aus Hörermeldungen. Nennt bewusst NUR die Straße/Region,
  *  nie den genauen Ort/Abschnitt (siehe stripExactSpot) – ein punktgenauer Radarwarn-Hinweis im
- *  Radio wäre inhaltlich dasselbe wie ein verbotenes Radarwarngerät, nur über Funk statt App. */
+ *  Radio wäre inhaltlich dasselbe wie ein verbotenes Radarwarngerät, nur über Funk statt App.
+ *  Erklärt das aber NICHT als eigene Regieanweisung on air ("bewusst nur ungenau ...") – klang
+ *  wie eine vorgelesene Redaktionsrichtlinie statt echtem Radio, einfach ganz normal sprechen. */
 export function blitzerLine(ctx: PlanContext) {
   const list = freshHotline(ctx)
     .filter((h) => h.type === "blitzer")
@@ -575,7 +584,8 @@ export function blitzerLine(ctx: PlanContext) {
       }${detail ? `, ${detail.replace(/[.!?]+$/, "")}` : ""}`,
     );
   });
-  return `Und jetzt der Blitzer-Service für Saarland und Rheinland-Pfalz. Geblitzt wird gemeldet – bewusst nur der Streckenabschnitt, kein genauer Punkt: ${lines.join(
+  const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
+  return `${intro} Geblitzt wird gemeldet: ${lines.join(
     ". ",
   )}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`;
 }
