@@ -28,6 +28,7 @@ import { useNewsFeed, useTrafficFeed } from "@/lib/use-feeds";
 import { useHotline } from "@/lib/use-hotline";
 import { useAdRequests } from "@/lib/use-ad-requests";
 import { useFreeMusicPool } from "@/lib/use-free-music";
+import { useListenerStats } from "@/lib/use-listener-stats";
 import { loadReports, saveReports } from "@/lib/reports";
 import { loadCampaigns, loadLiveSlots, saveCampaigns } from "@/lib/studio-store";
 import type { AdCampaign, LiveSlot, PlanItem, Report } from "@/lib/broadcast-types";
@@ -68,6 +69,7 @@ function Index() {
   const hotlineQuery = useHotline();
   const adRequestsQuery = useAdRequests();
   const freeMusicQuery = useFreeMusicPool();
+  const listenerStats = useListenerStats();
   const [reports, setReports] = useState<Report[]>([]);
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
   const [liveSlots, setLiveSlots] = useState<LiveSlot[]>([]);
@@ -238,6 +240,11 @@ function Index() {
             {traffic.length} Verkehr
           </span>
           <span className="rounded-full border border-border px-3 py-1">News :00 · :30</span>
+          {listenerStats && (
+            <span className="rounded-full border border-border px-3 py-1">
+              {listenerStats.concurrent} Hörer live · {listenerStats.playsToday} heute gestartet
+            </span>
+          )}
           <span className="rounded-full border border-border px-3 py-1">
             Eingeloggt als {user.displayName}
           </span>
