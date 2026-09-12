@@ -53,6 +53,10 @@ function Hotline() {
   const [error, setError] = useState<string | null>(null);
 
   const needsPlace = TYPE_OPTIONS.find((t) => t.value === type)?.needsPlace ?? false;
+  // Bei Blitzer reicht der Ort - Straße/Autobahn ist nicht mehr nötig und die Nachricht selbst
+  // fließt inzwischen gar nicht mehr in die Ansage ein (siehe blitzerOrtPhrase im Planer), darf
+  // also leer bleiben.
+  const isBlitzer = type === "blitzer";
 
   async function submit() {
     setStatus("sending");
@@ -61,7 +65,15 @@ function Hotline() {
       const res = await fetch("/api/public/hotline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, region, place, road, message, caller, contact }),
+        body: JSON.stringify({
+          type,
+          region,
+          place,
+          road,
+          message: isBlitzer && !message.trim() ? "Blitzer gemeldet." : message,
+          caller,
+          contact,
+        }),
       });
       if (!res.ok) {
         const info = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -126,23 +138,29 @@ function Hotline() {
         {needsPlace && (
           <>
             <Input
-              placeholder="Ort / Abschnitt (z. B. Saarbrücken-Burbach)"
+              placeholder={
+                isBlitzer ? "Ort (z. B. Homburg, St. Wendel)" : "Ort / Abschnitt (z. B. Saarbrücken-Burbach)"
+              }
               value={place}
               onChange={(e) => setPlace(e.target.value)}
             />
-            <Input
-              placeholder="Straße (z. B. A620, B51)"
-              value={road}
-              onChange={(e) => setRoad(e.target.value)}
-            />
+            {!isBlitzer && (
+              <Input
+                placeholder="Straße (z. B. A620, B51)"
+                value={road}
+                onChange={(e) => setRoad(e.target.value)}
+              />
+            )}
           </>
         )}
         <Textarea
           rows={4}
           placeholder={
-            needsPlace
-              ? "Was ist los? (z. B. Blitzer in Fahrtrichtung Saarlouis, rechte Spur)"
-              : "Ihre Nachricht an die Redaktion…"
+            isBlitzer
+              ? "Optional, z. B. mobiler Blitzer, Fahrtrichtung …"
+              : needsPlace
+                ? "Was ist los? (z. B. Unfall, rechte Spur blockiert)"
+                : "Ihre Nachricht an die Redaktion…"
           }
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -161,7 +179,11 @@ function Hotline() {
         </div>
 
         <Button
-          disabled={status === "sending" || (needsPlace && !place.trim()) || !message.trim()}
+          disabled={
+            status === "sending" ||
+            (needsPlace && !place.trim()) ||
+            (!isBlitzer && !message.trim())
+          }
           onClick={() => void submit()}
         >
           {status === "sending" ? "Wird gesendet…" : "Meldung an die Redaktion senden"}
