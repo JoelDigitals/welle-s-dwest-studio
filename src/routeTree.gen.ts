@@ -39,6 +39,8 @@ import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
 import { Route as ApiPublicAdRequestsRouteImport } from './routes/api/public/ad-requests'
 import { Route as ApiPublicHotlineRouteImport } from './routes/api/public/hotline'
+import { Route as ApiPublicListenerEventRouteImport } from './routes/api/public/listener-event'
+import { Route as ApiPublicListenerStatsRouteImport } from './routes/api/public/listener-stats'
 import { Route as ApiPublicNewsPageRouteImport } from './routes/api/public/news-page'
 import { Route as ApiPublicNowplayingRouteImport } from './routes/api/public/nowplaying'
 import { Route as ApiPublicOnairAudioRouteImport } from './routes/api/public/onair-audio'
@@ -194,6 +196,16 @@ const ApiPublicHotlineRoute = ApiPublicHotlineRouteImport.update({
   path: '/api/public/hotline',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicListenerEventRoute = ApiPublicListenerEventRouteImport.update({
+  id: '/api/public/listener-event',
+  path: '/api/public/listener-event',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicListenerStatsRoute = ApiPublicListenerStatsRouteImport.update({
+  id: '/api/public/listener-stats',
+  path: '/api/public/listener-stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicNewsPageRoute = ApiPublicNewsPageRouteImport.update({
   id: '/api/public/news-page',
   path: '/api/public/news-page',
@@ -247,6 +259,8 @@ export interface FileRoutesByFullPath {
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
+  '/api/public/listener-event': typeof ApiPublicListenerEventRoute
+  '/api/public/listener-stats': typeof ApiPublicListenerStatsRoute
   '/api/public/news-page': typeof ApiPublicNewsPageRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
   '/api/public/onair-audio': typeof ApiPublicOnairAudioRoute
@@ -283,6 +297,8 @@ export interface FileRoutesByTo {
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
+  '/api/public/listener-event': typeof ApiPublicListenerEventRoute
+  '/api/public/listener-stats': typeof ApiPublicListenerStatsRoute
   '/api/public/news-page': typeof ApiPublicNewsPageRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
   '/api/public/onair-audio': typeof ApiPublicOnairAudioRoute
@@ -320,6 +336,8 @@ export interface FileRoutesById {
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
+  '/api/public/listener-event': typeof ApiPublicListenerEventRoute
+  '/api/public/listener-stats': typeof ApiPublicListenerStatsRoute
   '/api/public/news-page': typeof ApiPublicNewsPageRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
   '/api/public/onair-audio': typeof ApiPublicOnairAudioRoute
@@ -358,6 +376,8 @@ export interface FileRouteTypes {
     | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
+    | '/api/public/listener-event'
+    | '/api/public/listener-stats'
     | '/api/public/news-page'
     | '/api/public/nowplaying'
     | '/api/public/onair-audio'
@@ -394,6 +414,8 @@ export interface FileRouteTypes {
     | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
+    | '/api/public/listener-event'
+    | '/api/public/listener-stats'
     | '/api/public/news-page'
     | '/api/public/nowplaying'
     | '/api/public/onair-audio'
@@ -430,6 +452,8 @@ export interface FileRouteTypes {
     | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
+    | '/api/public/listener-event'
+    | '/api/public/listener-stats'
     | '/api/public/news-page'
     | '/api/public/nowplaying'
     | '/api/public/onair-audio'
@@ -467,6 +491,8 @@ export interface RootRouteChildren {
   ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
   ApiPublicAdRequestsRoute: typeof ApiPublicAdRequestsRoute
   ApiPublicHotlineRoute: typeof ApiPublicHotlineRoute
+  ApiPublicListenerEventRoute: typeof ApiPublicListenerEventRoute
+  ApiPublicListenerStatsRoute: typeof ApiPublicListenerStatsRoute
   ApiPublicNewsPageRoute: typeof ApiPublicNewsPageRoute
   ApiPublicNowplayingRoute: typeof ApiPublicNowplayingRoute
   ApiPublicOnairAudioRoute: typeof ApiPublicOnairAudioRoute
@@ -685,6 +711,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHotlineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/listener-event': {
+      id: '/api/public/listener-event'
+      path: '/api/public/listener-event'
+      fullPath: '/api/public/listener-event'
+      preLoaderRoute: typeof ApiPublicListenerEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/listener-stats': {
+      id: '/api/public/listener-stats'
+      path: '/api/public/listener-stats'
+      fullPath: '/api/public/listener-stats'
+      preLoaderRoute: typeof ApiPublicListenerStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/news-page': {
       id: '/api/public/news-page'
       path: '/api/public/news-page'
@@ -747,6 +787,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthRegisterRoute: ApiAuthRegisterRoute,
   ApiPublicAdRequestsRoute: ApiPublicAdRequestsRoute,
   ApiPublicHotlineRoute: ApiPublicHotlineRoute,
+  ApiPublicListenerEventRoute: ApiPublicListenerEventRoute,
+  ApiPublicListenerStatsRoute: ApiPublicListenerStatsRoute,
   ApiPublicNewsPageRoute: ApiPublicNewsPageRoute,
   ApiPublicNowplayingRoute: ApiPublicNowplayingRoute,
   ApiPublicOnairAudioRoute: ApiPublicOnairAudioRoute,

@@ -89,5 +89,19 @@ export async function ensureSchema() {
       owner_id TEXT
     )
   `;
+  // Zuhörer-Erfassung: jede Zeile ist ein "Stream gestartet"-Ereignis eines Clients (siehe
+  // listener-tracking.ts). Dauerhaft in Postgres, damit Auswertungen (z. B. "Hörer heute") einen
+  // Render-Redeploy überleben - anders als die gleichzeitige-Hörer-Zählung, die bewusst nur
+  // flüchtig im Speicher lebt (siehe getConcurrentListeners).
+  await sql`
+    CREATE TABLE IF NOT EXISTS listener_plays (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      started_at BIGINT NOT NULL
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_listener_plays_started ON listener_plays(started_at)
+  `;
   g.__schemaReady = true;
 }

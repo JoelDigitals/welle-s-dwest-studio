@@ -1,5 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 
+/** Ein pro Browser einmal erzeugter, zufälliger Client-Bezeichner für die Zuhörer-Erfassung
+ * (siehe listener-event.ts) - keine persönlichen Daten, dient nur dazu, denselben Hörer über
+ * mehrere Herzschläge hinweg in der Zählung der gleichzeitigen Hörer zusammenzuhalten. */
+function listenerClientId(): string {
+  try {
+    const key = "ws-listener-id";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+const HEARTBEAT_INTERVAL_MS = 20_000;
+
+function sendListenerEvent(type: "start" | "heartbeat", clientId: string) {
+  const body = JSON.stringify({ clientId, type });
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon("/api/public/listener-event", new Blob([body], { type: "application/json" }));
+    return;
+  }
+  void fetch("/api/public/listener-event", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 export type NowPlayingNext = {
   uid: string;
   kind: string;
@@ -418,6 +451,16 @@ export function useLiveBroadcast() {
     slotsRef.current.a?.audio.pause();
     slotsRef.current.b?.audio.pause();
   }, [playing, stream]);
+
+  // Zuhörer-Erfassung: einmal "start" beim Beginn der Wiedergabe (echter Play-Klick, kein
+  // stiller Autoplay-Versuch), danach alle 20s ein Herzschlag, solange noch abgespielt wird.
+  useEffect(() => {
+    if (!playing) return;
+    const clientId = listenerClientId();
+    sendListenerEvent("start", clientId);
+    const t = setInterval(() => sendListenerEvent("heartbeat", clientId), HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(t);
+  }, [playing]);
 
   useEffect(() => {
     return () => {
