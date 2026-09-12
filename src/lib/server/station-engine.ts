@@ -492,6 +492,7 @@ function publishNowPlaying(state: EngineState) {
       subtitle: i.subtitle,
       duration: i.duration,
       introSeconds: introSecondsFor(i),
+      talkoverSeconds: i.talkoverSeconds,
       plannedAt: i.plannedAt,
     })),
     updatedAt: Date.now(),

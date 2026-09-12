@@ -39,6 +39,19 @@ export function speakDuration(text: string) {
   return Math.max(8, Math.round((words / 145) * 60));
 }
 
+/** Wie viele Sekunden ein "Talkover" (Sprache beginnt schon über dem Songausklang, wie im echten
+ *  Radio) dauern soll – richtet sich nach der tatsächlichen Länge des Textes, der gleich gesprochen
+ *  wird: eine kurze Zwischenansage bekommt nur einen kurzen Überlapp, eine längere Moderation etwas
+ *  mehr. Bewusst eine kleine Spanne (3–8s), damit der Song nie zu früh komplett verschwindet. */
+function talkoverSecondsFor(speechDuration: number): number {
+  return Math.min(8, Math.max(3, Math.round(speechDuration * 0.18)));
+}
+
+/** Wie oft ein Übergang Song → Sprache (kein Jingle dazwischen) tatsächlich einen Talkover bekommt
+ *  statt nur eines kurzen, sauberen Schnitts – "nur bei bestimmten Situationen", nicht bei jedem
+ *  einzelnen Songende, sonst klingt es schnell aufgesetzt/formelhaft. */
+const TALKOVER_CHANCE = 0.35;
+
 /** Uhrzeit so, wie sie im Radio gesprochen wird: „11 Uhr 45“, „12 Uhr“. Immer deutsche Ortszeit,
  *  unabhängig von der Zeitzone des Servers (Cloud-Hosting läuft oft in UTC). */
 export function spokenTime(at: number) {
@@ -602,19 +615,19 @@ export function blitzerLine(ctx: PlanContext) {
     .filter((h) => h.type === "blitzer")
     .slice(0, 5);
   if (!list.length) return "";
-  const lines = list.map((h, i) => {
-    const detail = stripExactSpot(h.message ?? "");
-    const ortPhrase = blitzerOrtPhrase(h.place, h.road, i);
-    return clean(
-      `${h.region === "Saarland" ? "Im Saarland" : "In Rheinland-Pfalz"}: ${ortPhrase}${
-        detail ? `, ${detail.replace(/[.!?]+$/, "")}` : ""
-      }`,
-    );
-  });
+  // Bewusst nur noch eine einfache Ortsliste, keine Region je Meldung und keine zusätzliche
+  // Detail-/Nachrichtenzeile mehr – ein Blitzer-Service ist im echten Radio kurz und listenartig
+  // ("Blitzer heute unter anderem in X und Y"), die Intro nennt Saarland und Rheinland-Pfalz schon
+  // gemeinsam, das muss nicht vor jedem einzelnen Ort wiederholt werden.
+  const places = list.map((h, i) => blitzerOrtPhrase(h.place, h.road, i));
+  const joined =
+    places.length > 1
+      ? `${places.slice(0, -1).join(", ")} und ${places[places.length - 1]}`
+      : places[0];
   const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
-  return `${intro} Geblitzt wird gemeldet: ${lines.join(
-    ". ",
-  )}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`;
+  return clean(
+    `${intro} Geblitzt wird aktuell gemeldet: ${joined}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`,
+  );
 }
 
 /** Anzahl frischer Blitzer-Meldungen – steuert den eigenen Blitzer-Block im Plan. */
@@ -1307,19 +1320,29 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       subtitle: string,
       text: string,
       extra?: Partial<PlanItem>,
-    ) =>
-      push({
+    ) => {
+      const duration = speakDuration(text);
+      // Talkover NUR direkt nach einem normalen Song (kein Jingle als Brücke dazwischen, siehe
+      // items[items.length - 1]) und NIE vor Werbung – ein Werbespot soll immer sauber und ohne
+      // Überlapp auf den vorigen Song starten, kein Talkover-Effekt.
+      const prev = items[items.length - 1];
+      const eligible = kind !== "ad" && prev?.kind === "music";
+      const talkoverSeconds =
+        eligible && Math.random() < TALKOVER_CHANCE ? talkoverSecondsFor(duration) : undefined;
+      return push({
         kind,
         title,
         subtitle,
-        duration: speakDuration(text),
+        duration,
         text,
         voice: host.voice,
         sponsor: null,
         needsApproval: approval,
         approved: !approval,
+        talkoverSeconds,
         ...extra,
       });
+    };
 
     /** Trenner-Sound zwischen den Meldungen. */
     const pushTrenner = (label: string) => {
@@ -1448,8 +1471,11 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     };
 
     let adsThisHour = 0;
-    const pushAd = () => {
-      if (!campaigns.length || adsThisHour >= adsPerHour) return false;
+    /** guaranteed: ignoriert das Stunden-Limit (adsPerHour) - für den festen Werbeplatz direkt vor
+     *  dem Wetter (siehe pushPreNews), der IMMER eine Werbung bekommen soll, solange es überhaupt
+     *  eine freigegebene Kampagne gibt. Das Limit greift nur noch für die freie Rotation. */
+    const pushAd = (guaranteed = false) => {
+      if (!campaigns.length || (!guaranteed && adsThisHour >= adsPerHour)) return false;
       generalIndex++;
       const advertisers = campaigns.map((c) => c.advertiser.toLowerCase());
       const uploaded = mediaOf(ctx.media, "ad").filter(
@@ -1904,7 +1930,10 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     // Wetter und Nachrichten einschieben und genau die gewünschte Reihenfolge wieder zerstören.
     const PRE_NEWS_RESERVE_MS = 100_000;
     const pushPreNews = () => {
-      if (!pushAd()) pushJingle();
+      // Vor dem Wetter läuft IMMER Werbung, wenn es überhaupt eine freigegebene Kampagne gibt -
+      // bewusst ohne das adsThisHour-Limit, sonst fehlte hier ab dem zweiten Werbeplatz derselben
+      // Stunde die Werbung und ein Jingle sprang stattdessen ein.
+      if (!pushAd(true)) pushJingle();
       pushWeather();
     };
 

@@ -37,6 +37,9 @@ export type NowPlaying = {
     subtitle: string;
     duration: number;
     introSeconds: number;
+    /** Nur gesetzt, wenn der Planer für den Einstieg dieses Elements einen "Talkover" über den
+     *  Ausklang des vorigen Songs vorgesehen hat (siehe talkoverSecondsFor in planner.ts). */
+    talkoverSeconds?: number;
     plannedAt: number;
   }>;
   updatedAt: number;

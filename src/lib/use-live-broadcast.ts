@@ -40,6 +40,9 @@ export type NowPlayingNext = {
   subtitle: string;
   duration: number;
   introSeconds: number;
+  /** Nur gesetzt, wenn der Planer für den Einstieg dieses Elements einen "Talkover" über den
+   *  Ausklang des vorigen Songs vorgesehen hat (siehe talkoverSecondsFor in planner.ts). */
+  talkoverSeconds?: number;
   plannedAt: number;
 };
 
@@ -72,18 +75,22 @@ function isMusical(kind: string | null | undefined): boolean {
 
 /** Wie lange sich zwei Elemente beim Übergang überlappen sollen, bevor das alte ausgeblendet ist.
  *  Echte Gesangserkennung bräuchte Audioanalyse – "introSeconds" ist nur eine grobe, serverseitige
- *  Schätzung. Moderation soll schon ~5s vor Ende des vorigen Elements einsetzen und noch ~5s ins
- *  nächste hineinlaufen (keine Stillephasen) – nur Sprache-zu-Sprache bekommt bewusst eine
- *  kürzere Überblendung (glättet den Schnitt, ohne dass sich zwei Stimmen lange überlappen). */
+ *  Schätzung. Ein echter "Talkover" (Sprache setzt schon über dem Songausklang ein) gibt es nur,
+ *  wenn der Planer das für GENAU diesen Übergang vorgesehen hat (next.talkoverSeconds, siehe
+ *  planner.ts) – ohne dieses Feld gibt es nur einen kurzen, sauberen Schnitt, keinen Überlapp-
+ *  Effekt. Werbung bekommt NIE einen Talkover, auch wenn ein Song direkt davor lief: ein Werbespot
+ *  soll immer sauber starten, kein zufälliges Doppel-Audio auf dem Songausklang. */
 function crossfadeWindow(
   fromKind: string | null | undefined,
   toKind: string | null | undefined,
   introSeconds: number,
+  talkoverSeconds?: number,
 ): number {
   const fromMusical = isMusical(fromKind);
   const toMusical = isMusical(toKind);
+  if (toKind === "ad") return fromMusical ? 2 : 1; // Werbung startet immer sauber, ohne Talkover
   if (!fromMusical && toMusical) return Math.max(5, introSeconds || 6); // Ansage spricht übers Intro
-  if (fromMusical && !toMusical) return 5; // Musik klingt aus, während die Ansage schon einsetzt
+  if (fromMusical && !toMusical) return talkoverSeconds ?? 1.5; // nur bei explizit geplantem Talkover ein echter Überlapp
   if (fromMusical && toMusical) return 3; // Songs/Jingles/Slogans zügig ineinander überblenden
   return 1.5; // Ansage zu Ansage: nur den Schnitt glätten, nicht wirklich überlappen lassen
 }
@@ -357,7 +364,7 @@ export function useLiveBroadcast() {
     const window = isTalkIntoMusic
       ? Math.min(Math.max(5, next.introSeconds || 6), state.duration * 0.9, next.duration * 0.6)
       : Math.min(
-          crossfadeWindow(state.kind, next.kind, next.introSeconds),
+          crossfadeWindow(state.kind, next.kind, next.introSeconds, next.talkoverSeconds),
           state.duration * 0.6,
           next.duration * 0.6,
         );

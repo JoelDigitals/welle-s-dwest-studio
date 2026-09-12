@@ -88,6 +88,12 @@ export type PlanItem = {
   audioUrl?: string;
   /** true, sobald das Audio aus dem 48h-Cache kam */
   fromCache?: boolean;
+  /** Nur gesetzt, wenn der Planer für den Übergang VOM vorigen Element (ein normaler Song, kein
+   *  Jingle dazwischen) bewusst einen "Talkover" vorgesehen hat – der Songausklang und der Anfang
+   *  dieses Elements überlappen sich dann so lange (Sekunden), bevor der Song endgültig ausgeblendet
+   *  wird (siehe crossfadeWindow in use-live-broadcast.ts). Ohne dieses Feld gibt es nur einen
+   *  kurzen technischen Schnitt, keinen echten Talkover-Effekt. */
+  talkoverSeconds?: number;
 };
 
 export type NewsFeedItem = {
