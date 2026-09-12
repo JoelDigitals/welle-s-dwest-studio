@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Newspaper } from "lucide-react";
+import { ChevronLeft, ChevronRight, Newspaper, Search, X } from "lucide-react";
 
 const TITLE = "Nachrichten – Welle Südwest";
 const DESCRIPTION =
@@ -37,7 +37,7 @@ const PAGE_SIZE = 16;
 
 /** Paginiert statt alles auf einmal zu laden – Artikel bleiben dauerhaft gespeichert (siehe
  *  news-articles-store.ts), die Liste kann also mit der Zeit lang werden. */
-function useNewsPage(page: number) {
+function useNewsPage(page: number, query: string) {
   const [data, setData] = useState<NewsPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +47,8 @@ function useNewsPage(page: number) {
     setLoading(true);
     const load = async () => {
       try {
-        const res = await fetch(`/api/public/news-page?page=${page}&pageSize=${PAGE_SIZE}`);
+        const q = query.trim() ? `&q=${encodeURIComponent(query.trim())}` : "";
+        const res = await fetch(`/api/public/news-page?page=${page}&pageSize=${PAGE_SIZE}${q}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as NewsPage;
         if (active) {
@@ -67,16 +68,28 @@ function useNewsPage(page: number) {
       active = false;
       clearInterval(t);
     };
-  }, [page]);
+  }, [page, query]);
 
   return { data, error, loading };
 }
 
 function Nachrichten() {
   const [page, setPage] = useState(1);
-  const { data, error, loading } = useNewsPage(page);
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const { data, error, loading } = useNewsPage(page, query);
   const items = data?.items ?? [];
   const totalPages = data?.totalPages ?? 1;
+
+  const runSearch = () => {
+    setPage(1);
+    setQuery(queryInput.trim());
+  };
+  const clearSearch = () => {
+    setQueryInput("");
+    setQuery("");
+    setPage(1);
+  };
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
@@ -90,6 +103,37 @@ function Nachrichten() {
         </div>
       </header>
 
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          runSearch();
+        }}
+      >
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            placeholder="Nachrichten durchsuchen …"
+            className="w-full rounded-full border border-border bg-secondary/40 py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+          />
+        </div>
+        {query && (
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-2 text-xs font-medium"
+          >
+            <X className="size-3.5" /> Zurücksetzen
+          </button>
+        )}
+        <button type="submit" className="rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground">
+          Suchen
+        </button>
+      </form>
+
       {error && <p className="text-sm text-destructive">{error}</p>}
       {loading && (
         <div className="space-y-3">
@@ -99,7 +143,9 @@ function Nachrichten() {
         </div>
       )}
       {!loading && items.length === 0 && !error && (
-        <p className="text-sm text-muted-foreground">Aktuell liegen keine Meldungen vor.</p>
+        <p className="text-sm text-muted-foreground">
+          {query ? `Keine Nachrichten zu „${query}“ gefunden.` : "Aktuell liegen keine Meldungen vor."}
+        </p>
       )}
 
       <div className="space-y-3">

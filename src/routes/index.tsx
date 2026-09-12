@@ -20,6 +20,7 @@ import { OutputPanel } from "@/components/studio/OutputPanel";
 import { ApprovalPanel } from "@/components/studio/ApprovalPanel";
 import { StreamHealth } from "@/components/studio/StreamHealth";
 import { AdRequestsPanel } from "@/components/studio/AdRequestsPanel";
+import { StatistikPanel } from "@/components/studio/StatistikPanel";
 import { useRadioEngine } from "@/lib/use-radio-engine";
 import { useLiveBroadcast } from "@/lib/use-live-broadcast";
 import { useLiveStudio } from "@/lib/use-live-studio";
@@ -284,6 +285,7 @@ function Index() {
             <TabsTrigger value="hotline">Hotline</TabsTrigger>
             <TabsTrigger value="bibliothek">Bibliothek</TabsTrigger>
             <TabsTrigger value="monitor">Monitor</TabsTrigger>
+            <TabsTrigger value="statistik">Statistik</TabsTrigger>
             <TabsTrigger value="ausgabe">Ausgabe</TabsTrigger>
           </TabsList>
 
@@ -429,6 +431,16 @@ function Index() {
               totalPlanned={e.totalPlanned}
             />
             <StreamHealth onLog={e.addLog} />
+          </TabsContent>
+
+          <TabsContent value="statistik" className="mt-4">
+            <StatistikPanel
+              listenerStats={listenerStats}
+              media={library.media}
+              campaigns={campaigns}
+              news={news}
+              traffic={traffic}
+            />
           </TabsContent>
 
           <TabsContent value="ausgabe" className="mt-4">

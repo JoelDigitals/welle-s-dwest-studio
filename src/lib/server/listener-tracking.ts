@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ensureSchema, getDb } from "./db";
+import { berlinDateKey } from "@/lib/berlin-time";
 
 /**
  * Zuhörer-Erfassung, zweigeteilt:
@@ -58,4 +59,25 @@ export async function getListenerPlayStats() {
     FROM listener_plays
   `;
   return { playsToday: Number(row?.today ?? 0), playsLast7Days: Number(row?.week ?? 0) };
+}
+
+/** Plays je Kalendertag (Berliner Ortszeit) der letzten `days` Tage - für die Statistik-Seite im
+ *  Studio (kleines Balkendiagramm statt nur einer nackten Summe). */
+export async function getListenerPlaysByDay(
+  days = 7,
+): Promise<Array<{ day: string; count: number }>> {
+  await ensureSchema();
+  const sql = getDb();
+  const since = Date.now() - days * 24 * 3600_000;
+  const rows = await sql<{ started_at: string }[]>`
+    SELECT started_at FROM listener_plays WHERE started_at >= ${since}
+  `;
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const day = berlinDateKey(Number(row.started_at));
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([day, count]) => ({ day, count }))
+    .sort((a, b) => a.day.localeCompare(b.day));
 }

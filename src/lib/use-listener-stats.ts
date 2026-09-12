@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 
-type ListenerStats = { concurrent: number; playsToday: number; playsLast7Days: number };
+export type ListenerStats = {
+  concurrent: number;
+  playsToday: number;
+  playsLast7Days: number;
+  byDay: Array<{ day: string; count: number }>;
+};
 
 /** Nur fürs Studio (intern) - die öffentliche Website zeigt die Zahl bewusst NICHT (siehe
  *  /api/public/listener-stats), solange die Reichweite noch klein ist, sieht "0 Hörer" dort

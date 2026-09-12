@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getConcurrentListeners, getListenerPlayStats } from "@/lib/server/listener-tracking";
+import {
+  getConcurrentListeners,
+  getListenerPlayStats,
+  getListenerPlaysByDay,
+} from "@/lib/server/listener-tracking";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -18,8 +22,9 @@ export const Route = createFileRoute("/api/public/listener-stats")({
           playsToday: 0,
           playsLast7Days: 0,
         }));
+        const byDay = await getListenerPlaysByDay(7).catch(() => []);
         return Response.json(
-          { concurrent, playsToday, playsLast7Days, updatedAt: Date.now() },
+          { concurrent, playsToday, playsLast7Days, byDay, updatedAt: Date.now() },
           { headers: cors },
         );
       },
