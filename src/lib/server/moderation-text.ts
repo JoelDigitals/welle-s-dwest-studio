@@ -453,8 +453,14 @@ Nur wenn das Thema selbst wirklich nichts hergibt (z. B. eine reine Ein-Satz-Ran
 Antworte NUR mit dem Artikeltext (keine Überschrift, die kommt separat), keine Anführungszeichen, keine Meta-Kommentare.`;
 
 /** Wie tryHumanizeNews, aber schreibt einen ausführlicheren geschriebenen Artikel statt eines
- *  gesprochenen Textes. Bei Fehlern (Rate-Limit, kein Key) fällt auf den rohen RSS-Text zurück. */
-export async function tryWriteNewsArticle(headline: string, body: string): Promise<string> {
+ *  gesprochenen Textes. Bei Fehlern (Rate-Limit, kein Key) fällt auf den rohen RSS-Text zurück –
+ *  "generated: false" markiert diesen Fall explizit, damit news-articles-store.ts einen
+ *  fehlgeschlagenen Versuch später automatisch erneut probieren kann, statt einen roh gebliebenen
+ *  Artikel für immer als "fertig" zu betrachten. */
+export async function tryWriteNewsArticle(
+  headline: string,
+  body: string,
+): Promise<{ article: string; generated: boolean }> {
   const fallback = body || headline;
   try {
     const { text } = await generateText({
@@ -463,8 +469,9 @@ export async function tryWriteNewsArticle(headline: string, body: string): Promi
       temperature: 0.6,
       topP: 0.9,
     });
-    return text.trim() || fallback;
+    const article = text.trim();
+    return article ? { article, generated: true } : { article: fallback, generated: false };
   } catch {
-    return fallback;
+    return { article: fallback, generated: false };
   }
 }

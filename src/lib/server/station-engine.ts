@@ -40,7 +40,7 @@ import { getTopicForDate, listRecentTopics, recordTopic } from "./show-topics-st
 import { SHOWS } from "@/lib/radio-config";
 import { berlinDateKey } from "@/lib/berlin-time";
 import { CURIOSITY_DAYS } from "@/lib/curiosity-days";
-import { ensureArticlesPersisted } from "./news-articles-store";
+import { ensureArticlesPersisted, upgradeThinArticles } from "./news-articles-store";
 
 /**
  * Autonome Sende-Engine: läuft dauerhaft im Server-Prozess, unabhängig davon, ob irgendwo ein
@@ -239,6 +239,10 @@ async function refreshFeeds(state: EngineState) {
           // schreiben + speichern kann mehrere Sekunden dauern) - der Sende-Tick soll darauf
           // nicht warten müssen.
           void ensureArticlesPersisted(ranked).catch(() => undefined);
+          // Kleine Charge älterer, damals fehlgeschlagener ("roh gebliebener") Artikel erneut
+          // versuchen - unabhängig davon, ob die Meldung noch im Live-Feed steht, sonst würden
+          // längst rotierte Meldungen nie wieder einen echten Artikel bekommen.
+          void upgradeThinArticles(5).catch(() => undefined);
         })
         .catch(() => undefined),
     );

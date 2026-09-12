@@ -121,5 +121,16 @@ export async function ensureSchema() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_news_articles_created ON news_articles(created_at DESC)
   `;
+  // Nachträglich hinzugekommen: hält fest, ob "article" wirklich von der KI umgeschrieben wurde
+  // oder nur der unveränderte Roh-RSS-Text ist (KI gerade nicht erreichbar, z. B. Freikontingent
+  // ausgeschöpft) - nur so lassen sich später "steckengebliebene" Roh-Artikel automatisch erneut
+  // versuchen (siehe upgradeThinArticles in news-articles-store.ts), ohne echte kurze
+  // KI-Entscheidungen ("zu diesem Thema gibt es nicht mehr zu sagen") fälschlich zu wiederholen.
+  await sql`ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN NOT NULL DEFAULT true`;
+  // Einmalige Korrektur für Artikel, die VOR Einführung dieser Spalte gespeichert wurden (der
+  // Default "true" trifft auf sie nicht zu) - sehr kurze Artikel waren zu dem Zeitpunkt praktisch
+  // immer der unveränderte RSS-Rohtext (KI nicht erreichbar), kein bewusst kurz gehaltener
+  // KI-Artikel. Betrifft neue, korrekt gekennzeichnete Artikel danach nicht mehr.
+  await sql`UPDATE news_articles SET ai_generated = false WHERE ai_generated = true AND length(article) < 300`;
   g.__schemaReady = true;
 }

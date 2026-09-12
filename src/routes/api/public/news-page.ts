@@ -33,7 +33,8 @@ export const Route = createFileRoute("/api/public/news-page")({
           500,
           Math.max(1, Number(url.searchParams.get("pageSize")) || DEFAULT_PAGE_SIZE),
         );
-        const { items, total } = await listArticlesPage(page, pageSize);
+        const q = url.searchParams.get("q") ?? undefined;
+        const { items, total } = await listArticlesPage(page, pageSize, q);
         return Response.json(
           {
             items,
