@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Newspaper, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Newspaper } from "lucide-react";
 
 const TITLE = "Nachrichten – Welle Südwest";
 const DESCRIPTION =
@@ -31,22 +31,27 @@ type Article = {
   article: string;
 };
 
-const REGION_ORDER: Region[] = ["Saarland", "Rheinland-Pfalz", "Deutschland", "Welt"];
+type NewsPage = { items: Article[]; page: number; totalPages: number };
 
-function useNewsPage() {
-  const [items, setItems] = useState<Article[] | null>(null);
+const PAGE_SIZE = 16;
+
+/** Paginiert statt alles auf einmal zu laden – Artikel bleiben dauerhaft gespeichert (siehe
+ *  news-articles-store.ts), die Liste kann also mit der Zeit lang werden. */
+function useNewsPage(page: number) {
+  const [data, setData] = useState<NewsPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
     const load = async () => {
       try {
-        const res = await fetch("/api/public/news-page");
+        const res = await fetch(`/api/public/news-page?page=${page}&pageSize=${PAGE_SIZE}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as { items: Article[] };
+        const json = (await res.json()) as NewsPage;
         if (active) {
-          setItems(json.items);
+          setData(json);
           setError(null);
         }
       } catch {
@@ -56,22 +61,22 @@ function useNewsPage() {
       }
     };
     void load();
+    // Nur die aktuell sichtbare Seite pollen, keine Endlos-Liste im Hintergrund neu laden.
     const t = setInterval(load, 5 * 60_000);
     return () => {
       active = false;
       clearInterval(t);
     };
-  }, []);
+  }, [page]);
 
-  return { items, error, loading };
+  return { data, error, loading };
 }
 
 function Nachrichten() {
-  const { items, error, loading } = useNewsPage();
-  const byRegion = REGION_ORDER.map((region) => ({
-    region,
-    items: (items ?? []).filter((i) => i.region === region),
-  })).filter((g) => g.items.length > 0);
+  const [page, setPage] = useState(1);
+  const { data, error, loading } = useNewsPage(page);
+  const items = data?.items ?? [];
+  const totalPages = data?.totalPages ?? 1;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
@@ -93,43 +98,66 @@ function Nachrichten() {
           ))}
         </div>
       )}
-      {!loading && (items?.length ?? 0) === 0 && !error && (
+      {!loading && items.length === 0 && !error && (
         <p className="text-sm text-muted-foreground">Aktuell liegen keine Meldungen vor.</p>
       )}
 
-      {byRegion.map(({ region, items: regionItems }) => (
-        <section key={region} className="space-y-3">
-          <h2 className="display flex items-center gap-2 text-lg text-primary">
-            <RefreshCw className="size-4" /> {region}
-          </h2>
-          {regionItems.map((a) => (
-            <article key={a.id} className="panel space-y-2 p-5">
-              <h3 className="display text-xl">{a.headline}</h3>
-              <div className="space-y-2 text-sm leading-relaxed text-foreground/90">
-                {a.article.split("\n").filter(Boolean).map((p, i) => (
+      <div className="space-y-3">
+        {items.map((a) => (
+          <article key={a.id} className="panel space-y-2 p-5">
+            <p className="text-xs uppercase tracking-widest text-primary">{a.region}</p>
+            <h2 className="display text-xl">{a.headline}</h2>
+            <div className="space-y-2 text-sm leading-relaxed text-foreground/90">
+              {a.article
+                .split("\n")
+                .filter(Boolean)
+                .map((p, i) => (
                   <p key={i}>{p}</p>
                 ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Quelle: {a.source}
-                {a.link && (
-                  <>
-                    {" · "}
-                    <a
-                      className="text-primary underline"
-                      href={a.link}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Originalartikel
-                    </a>
-                  </>
-                )}
-              </p>
-            </article>
-          ))}
-        </section>
-      ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Quelle: {a.source}
+              {a.link && (
+                <>
+                  {" · "}
+                  <a
+                    className="text-primary underline"
+                    href={a.link}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Originalartikel
+                  </a>
+                </>
+              )}
+            </p>
+          </article>
+        ))}
+      </div>
+
+      {!loading && totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+          >
+            <ChevronLeft className="size-4" /> Neuer
+          </button>
+          <span className="text-xs text-muted-foreground">
+            Seite {page} von {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+          >
+            Älter <ChevronRight className="size-4" />
+          </button>
+        </div>
+      )}
     </main>
   );
 }

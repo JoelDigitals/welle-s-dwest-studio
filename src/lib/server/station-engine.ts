@@ -40,6 +40,7 @@ import { getTopicForDate, listRecentTopics, recordTopic } from "./show-topics-st
 import { SHOWS } from "@/lib/radio-config";
 import { berlinDateKey } from "@/lib/berlin-time";
 import { CURIOSITY_DAYS } from "@/lib/curiosity-days";
+import { ensureArticlesPersisted } from "./news-articles-store";
 
 /**
  * Autonome Sende-Engine: läuft dauerhaft im Server-Prozess, unabhängig davon, ob irgendwo ein
@@ -234,6 +235,10 @@ async function refreshFeeds(state: EngineState) {
           // priorisiert. Bei Fehlern/Timeout bleibt die ursprüngliche Reihenfolge erhalten.
           const ranked = await rankNewsByImportance(r.items);
           state.news = { items: ranked, at: now };
+          // Läuft bewusst NICHT awaited im Hintergrund weiter (KI-Artikel je neuer Meldung
+          // schreiben + speichern kann mehrere Sekunden dauern) - der Sende-Tick soll darauf
+          // nicht warten müssen.
+          void ensureArticlesPersisted(ranked).catch(() => undefined);
         })
         .catch(() => undefined),
     );

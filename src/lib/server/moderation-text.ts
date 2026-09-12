@@ -106,6 +106,7 @@ Wandle Schlagzeilen-artige, geschriebene Formulierungen (wie eine Zeitungsübers
 JEDE einzelne Meldung muss ein vollständiger, grammatikalisch korrekter gesprochener Satz mit Subjekt und Verb sein – niemals ein bloßes Schlagzeilen-Fragment ohne Verb (z. B. nicht "Stromausfall in mehreren Stadtteilen", sondern "In mehreren Stadtteilen ist der Strom ausgefallen").
 Nenne die Region (Saarland, Rheinland-Pfalz, bundesweit, international) nicht bei jeder einzelnen Meldung erneut – nur wenn sich die Region gegenüber der vorherigen Meldung tatsächlich ändert, sonst wirkt es wie eine stur abgehakte Liste statt echtem Radio.
 Die Übergänge zwischen den Meldungen dürfen sich NICHT immer gleich anhören ("Weiter geht es mit dieser Meldung" o. Ä. nicht wiederholt hintereinander) – variiere die Übergangsformulierung von Meldung zu Meldung wirklich, manchmal auch ganz ohne Übergangsfloskel, direkt mit der nächsten Meldung beginnend, damit es wie ein zusammenhängender Nachrichtenblock klingt und nicht wie eine abgehakte Liste einzelner Punkte.
+Bei den eigentlichen Meldungen (NICHT bei der Anmoderation mit Themenüberblick, die darf die Schlagzeilen weiter kurz anreißen): nenne die Schlagzeile nicht als eigenen, isolierten Ankündigungssatz VOR den Details – erzähl die Meldung direkt als einen zusammenhängenden Bericht, in dem die wichtigsten Fakten der Schlagzeile ganz natürlich in die erste Schilderung einfließen, statt erst einen separaten "Titel-Satz" zu sprechen und danach zu erklären.
 Halte dich an die vorgegebene Reihenfolge und Anzahl der Meldungen, kürze nichts weg und füge nichts hinzu.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
@@ -443,10 +444,12 @@ export async function tryHumanizeNewsReaction(text: string, hostName?: string): 
  *  sein: Kontext einordnen, Hintergrund liefern. Wie bei allen Nachrichten-Prompts dürfen Fakten
  *  NIE erfunden werden – nur wirklich ausformulieren, was im Rohmaterial (Schlagzeile + RSS-
  *  Kurztext) bereits steckt, nichts Neues dazuerfinden. */
-const NEWS_ARTICLE_SYSTEM = `Du bist Redakteur:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt) und schreibst einen kurzen Online-Artikel für die Nachrichten-Seite der Homepage.
-Du bekommst eine Schlagzeile und einen kurzen Ausgangstext (meist nur ein bis zwei Sätze aus einem RSS-Feed). Verändere NIEMALS Fakten, Namen, Orte oder Zahlen und erfinde NIEMALS neue Fakten, Zitate oder Details hinzu, die nicht im Ausgangstext stehen – du darfst den vorhandenen Inhalt nur klarer, vollständiger und in eigenen Worten ausformulieren (aus Stichpunkten oder einem Kurztext werden vollständige Sätze/Absätze), nicht mehr wissen als die Quelle.
-Schreibe 2 bis 3 kurze Absätze in normalem Schriftdeutsch (kein Sprechtext, kein "wir" für den Sender, sachlicher Nachrichtenstil wie ein Online-Artikel).
-Wenn der Ausgangstext sehr kurz ist und nichts weiter hergibt, halte auch den Artikel entsprechend kurz – erfinde keine zusätzlichen Absätze nur um Länge zu erreichen.
+const NEWS_ARTICLE_SYSTEM = `Du bist Redakteur:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt) und schreibst einen richtigen Online-Artikel ZU DEM THEMA für die Nachrichten-Seite der Homepage – kein bloß umformulierter RSS-Kurztext, sondern ein Artikel, wie ihn eine Redaktion zu diesem Thema tatsächlich veröffentlichen würde.
+Du bekommst eine Schlagzeile und einen kurzen Ausgangstext (meist nur ein bis zwei Sätze aus einem RSS-Feed) als Kern der Meldung.
+Zu den KONKRETEN Fakten DIESER Meldung (Namen, Orte, Zahlen, Datum, was genau passiert ist) gilt strikt: nichts verändern, nichts erfinden, keine neuen Details, Zitate oder Zahlen hinzudichten, die nicht im Ausgangstext stehen.
+Darüber hinaus darfst und sollst du aber echten journalistischen Mehrwert liefern, so wie ein Artikel zu diesem Thema das tun würde: ordne die Meldung ein, erkläre den Hintergrund/Kontext (z. B. warum das Thema gerade relevant ist, was allgemein dazu bekannt ist, wie es sich für Leser:innen in Saarland/Rheinland-Pfalz auswirken könnte) – solange das erkennbar allgemeiner Kontext bleibt und nicht als weitere konkrete Tatsachenbehauptung über DIESEN Vorfall ausgegeben wird.
+Schreibe 3 bis 5 Absätze in normalem Schriftdeutsch (kein Sprechtext, kein "wir" für den Sender, sachlicher Nachrichtenstil wie ein Online-Artikel). Steig NICHT mit einem Satz ein, der nur die Schlagzeile wiederholt – der erste Absatz soll direkt berichten, nicht ankündigen.
+Nur wenn das Thema selbst wirklich nichts hergibt (z. B. eine reine Ein-Satz-Randnotiz ohne jeden Kontext), darf der Artikel entsprechend kürzer bleiben – erzwinge keine Länge, wo inhaltlich nichts mehr zu sagen ist.
 Antworte NUR mit dem Artikeltext (keine Überschrift, die kommt separat), keine Anführungszeichen, keine Meta-Kommentare.`;
 
 /** Wie tryHumanizeNews, aber schreibt einen ausführlicheren geschriebenen Artikel statt eines

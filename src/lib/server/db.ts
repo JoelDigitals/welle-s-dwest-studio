@@ -103,5 +103,23 @@ export async function ensureSchema() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_listener_plays_started ON listener_plays(started_at)
   `;
+  // KI-geschriebene Nachrichtenartikel für die /nachrichten-Seite (Studio) und die Website -
+  // dauerhaft in Postgres, damit ein Artikel sichtbar bleibt, auch wenn die zugrunde liegende
+  // RSS-Meldung längst aus dem Live-Feed gerutscht ist (siehe news-articles-store.ts).
+  await sql`
+    CREATE TABLE IF NOT EXISTS news_articles (
+      id TEXT PRIMARY KEY,
+      region TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      link TEXT,
+      published_at TEXT,
+      article TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_news_articles_created ON news_articles(created_at DESC)
+  `;
   g.__schemaReady = true;
 }
