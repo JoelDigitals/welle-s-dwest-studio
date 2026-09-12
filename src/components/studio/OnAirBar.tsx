@@ -6,10 +6,14 @@ import { formatClock } from "@/lib/radio-data";
 const KIND_LABEL: Record<string, string> = {
   music: "Musik",
   jingle: "Jingle",
+  showopener: "Sendungs-Opener",
   news: "Nachrichten",
   traffic: "Verkehr",
+  weather: "Wetter",
   ad: "Werbung",
   moderation: "Moderation",
+  slogan: "Station-ID",
+  recording: "Aufnahme",
   mic: "Mikrofon (live)",
 };
 
@@ -62,7 +66,7 @@ export function OnAirBar({ current, elapsed, playing, live, speaking, onToggle, 
 
       <div className="mt-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">
-          {current ? KIND_LABEL[current.kind] : "Kein Element"}
+          {current ? (KIND_LABEL[current.kind] ?? current.kind) : "Kein Element"}
         </p>
         <h2 className="display mt-1 text-3xl md:text-4xl">{current?.title ?? "Sendeplan leer"}</h2>
         <p className="text-sm text-muted-foreground">{current?.subtitle ?? "—"}</p>
