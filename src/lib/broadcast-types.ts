@@ -107,6 +107,10 @@ export type TrafficFeedItem = {
   headline: string;
   message: string;
   since?: string | null;
+  /** "api" = offizielle Autobahn-API (verschwindet von selbst, sobald die Lage vorbei ist – nie
+   *  nach Alter filtern), "rss" = Nachrichtenartikel über einen Vorfall (kann Stunden nach dem
+   *  eigentlichen Ereignis noch im Feed stehen, deshalb NACH Alter gefiltert, siehe fetch-traffic.ts). */
+  source?: "api" | "rss";
 };
 
 export type Report = {

@@ -50,9 +50,25 @@ export type TrafficResult = {
     headline: string;
     message: string;
     since: string | null;
+    source?: "api" | "rss";
   }>;
   errors: Array<{ road: string; error: string }>;
 };
+
+/** Wie alt ein RSS-Artikel höchstens sein darf, bevor er nicht mehr vorgelesen wird – ein
+ *  Nachrichtenartikel über einen Vorfall von heute Morgen taucht sonst im Feed noch stundenlang
+ *  unverändert auf, obwohl die Lage inzwischen oft längst vorbei ist ("immer dasselbe" trotz
+ *  Zeitablauf). Gilt NICHT für die offizielle Autobahn-API (source "api") – die liefert nur
+ *  wirklich noch aktive Lagen, verschwindet von selbst, sobald etwas erledigt ist. */
+const RSS_MAX_AGE_MS = 3 * 3600_000;
+
+function isFreshEnough(item: { since: string | null; source?: "api" | "rss" }): boolean {
+  if (item.source !== "rss") return true;
+  if (!item.since) return true; // kein Datum bekannt – lieber behalten als fälschlich rauswerfen
+  const t = Date.parse(item.since);
+  if (Number.isNaN(t)) return true;
+  return Date.now() - t < RSS_MAX_AGE_MS;
+}
 
 /** True, wenn zwei Meldungen offenbar dieselbe Lage beschreiben (gleiche Straße UND gleiche
  *  Orts-/Abschnittsangabe) – verhindert, dass ein Vorfall doppelt vorgelesen wird (erst aus der
@@ -91,6 +107,7 @@ export async function fetchTraffic(): Promise<TrafficResult> {
             headline,
             message,
             since: w.startTimestamp ?? null,
+            source: "api" as const,
           };
         });
 
@@ -125,12 +142,18 @@ export async function fetchTraffic(): Promise<TrafficResult> {
   ]);
 
   const apiItems = results.flatMap((r) => r.items).filter((i) => i.message || i.headline);
-  // RSS-Artikel nur übernehmen, wenn sie nicht dieselbe Lage wie eine API-Meldung beschreiben.
+  // RSS-Artikel nur übernehmen, wenn sie nicht dieselbe Lage wie eine API-Meldung beschreiben UND
+  // noch frisch genug sind (siehe RSS_MAX_AGE_MS) – ein Artikel von heute Morgen soll nicht noch
+  // Stunden später unverändert vorgelesen werden.
   const merged = [
     ...apiItems,
-    ...rss.items.filter(
-      (i) => !apiItems.some((api) => sameLocation(i.road, `${i.headline} ${i.message}`, api)),
-    ),
+    ...rss.items
+      .map((i) => ({ ...i, source: "rss" as const }))
+      .filter(
+        (i) =>
+          isFreshEnough(i) &&
+          !apiItems.some((api) => sameLocation(i.road, `${i.headline} ${i.message}`, api)),
+      ),
   ];
 
   return {
