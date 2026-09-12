@@ -544,18 +544,28 @@ function weatherListenerLine(ctx: PlanContext) {
  *  Streckenverlauf. Läuft VOR der KI-Umformulierung, damit ein exakter Punkt gar nicht erst als
  *  Ausgangsmaterial vorliegt, den die KI versehentlich übernehmen könnte. */
 export function stripExactSpot(text: string): string {
-  return clean(
-    text
-      .replace(
-        /\b(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?/g,
-        "",
-      )
-      .replace(/\bin\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
-      .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
-      .replace(/\bbei\s+km\s*\d+(?:[.,]\d+)?/gi, "")
-      .replace(/\bkm\s*\d+(?:[.,]\d+)?/gi, "")
-      .replace(/\bzwischen\s+.+?\s+und\s+[^,.;]+/gi, ""),
-  );
+  const stripped = text
+    // Verbindungswort ("direkt an der", "bei der", "nahe der") gleich MIT entfernen, nicht nur
+    // die Ausfahrt/Anschlussstelle selbst – sonst bleibt ein grammatisch kaputtes Fragment übrig
+    // ("... direkt an der ,." statt eines sauberen Satzendes).
+    .replace(
+      /\b(?:direkt\s+)?(?:an|bei|nahe)\s+(?:der\s+|dem\s+)?(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?/gi,
+      "",
+    )
+    .replace(
+      /\b(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?/g,
+      "",
+    )
+    .replace(/\bin\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
+    .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
+    .replace(/\bbei\s+km\s*\d+(?:[.,]\d+)?/gi, "")
+    .replace(/\bkm\s*\d+(?:[.,]\d+)?/gi, "")
+    .replace(/\bzwischen\s+.+?\s+und\s+[^,.;]+/gi, "")
+    // Nach dem Entfernen bleiben oft doppelte/verwaiste Kommas oder ein Komma direkt vor dem
+    // Satzende übrig ("... Saarbrücken, , km 12,3." → "... Saarbrücken, .") – hier aufräumen.
+    .replace(/\s*,\s*,/g, ",")
+    .replace(/,\s*([.!?]|$)/g, "$1");
+  return clean(stripped);
 }
 
 /** Verschiedene Einstiege für den Blitzer-Service, damit er nicht jedes Mal wortgleich beginnt. */
@@ -565,11 +575,28 @@ const BLITZER_INTRO = [
   "Der Blitzer-Service auf Welle Südwest.",
 ];
 
-/** Blitzer-Service – ausschließlich aus Hörermeldungen. Nennt bewusst NUR die Straße/Region,
- *  nie den genauen Ort/Abschnitt (siehe stripExactSpot) – ein punktgenauer Radarwarn-Hinweis im
- *  Radio wäre inhaltlich dasselbe wie ein verbotenes Radarwarngerät, nur über Funk statt App.
- *  Erklärt das aber NICHT als eigene Regieanweisung on air ("bewusst nur ungenau ...") – klang
- *  wie eine vorgelesene Redaktionsrichtlinie statt echtem Radio, einfach ganz normal sprechen. */
+/** Ortsbezogene, aber bewusst NICHT punktgenaue Blitzer-Ortsangabe: der Ort/die Ortschaft (wie in
+ *  echten Radio-Blitzer-Services üblich – "Ortseingang", "Ortsdurchfahrt") ist erlaubt, ein
+ *  exakter Straßenpunkt/Kilometer/eine Ausfahrt nicht (siehe stripExactSpot). Ohne bekannten Ort
+ *  bleibt nur die Straße bzw. "in der Region" als letzter Rückfall. */
+function blitzerOrtPhrase(place: string, road: string, index: number): string {
+  const ort = stripExactSpot(place ?? "").trim();
+  if (!ort) return road ? `auf der ${road}` : "in der Region";
+  const variants = [
+    `in ${ort}`,
+    `am Ortseingang von ${ort}`,
+    `in der Ortsdurchfahrt von ${ort}`,
+    road ? `auf der ${road} bei ${ort}` : `im Bereich von ${ort}`,
+  ];
+  return pick(variants, index);
+}
+
+/** Blitzer-Service – ausschließlich aus Hörermeldungen. Nennt Ort/Ortseingang/Ortsdurchfahrt
+ *  (wie im echten Verkehrsfunk üblich), nie den exakten Punkt (Ausfahrt, Höhe X, Kilometer, siehe
+ *  stripExactSpot) – ein punktgenauer Radarwarn-Hinweis im Radio wäre inhaltlich dasselbe wie ein
+ *  verbotenes Radarwarngerät, nur über Funk statt App. Erklärt das aber NICHT als eigene
+ *  Regieanweisung on air ("bewusst nur ungenau ...") – klang wie eine vorgelesene
+ *  Redaktionsrichtlinie statt echtem Radio, einfach ganz normal sprechen. */
 export function blitzerLine(ctx: PlanContext) {
   const list = freshHotline(ctx)
     .filter((h) => h.type === "blitzer")
@@ -577,11 +604,11 @@ export function blitzerLine(ctx: PlanContext) {
   if (!list.length) return "";
   const lines = list.map((h, i) => {
     const detail = stripExactSpot(h.message ?? "");
-    const vague = vagueLocation(i);
+    const ortPhrase = blitzerOrtPhrase(h.place, h.road, i);
     return clean(
-      `${h.region === "Saarland" ? "Im Saarland" : "In Rheinland-Pfalz"}: ${
-        h.road ? `auf der ${h.road}${vague ? `, ${vague}` : ""}` : vague || "in der Region"
-      }${detail ? `, ${detail.replace(/[.!?]+$/, "")}` : ""}`,
+      `${h.region === "Saarland" ? "Im Saarland" : "In Rheinland-Pfalz"}: ${ortPhrase}${
+        detail ? `, ${detail.replace(/[.!?]+$/, "")}` : ""
+      }`,
     );
   });
   const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
