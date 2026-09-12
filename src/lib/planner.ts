@@ -319,9 +319,18 @@ function policeStatus(raw: string, index: number): string {
   return pick(POLICE_UNKNOWN, index);
 }
 
+/** Allgemeine, bewusst UNGENAUE Ortsangabe für Stau/Baustelle/Sperrung/Blitzer – nie ein exakter
+ *  Punkt, aber auch NIE die Formulierung "im Streckenverlauf" (Tabu-Wort, klingt robotisch/nach
+ *  Behördendeutsch). Mal ganz ohne Zusatz (nur die Straße reicht schon), mal eine natürliche
+ *  Alternative. */
+const VAGUE_LOCATION = ["", "", "in diesem Bereich", "auf diesem Abschnitt", "auf der gesamten Strecke"];
+function vagueLocation(index: number): string {
+  return pick(VAGUE_LOCATION, index);
+}
+
 /** Eine natürlich klingende Verkehrsmeldung im Radiostil. Die Position wird bei normalem Stau/
- *  Baustelle/Sperrung bewusst nur allgemein genannt ("im Streckenverlauf der A6"), nie punktgenau –
- *  genau wie beim Blitzer-Service (stripExactSpot) soll das keine Navi-genaue Stelle verraten.
+ *  Baustelle/Sperrung bewusst nur allgemein genannt (siehe vagueLocation), nie punktgenau – genau
+ *  wie beim Blitzer-Service (stripExactSpot) soll das keine Navi-genaue Stelle verraten.
  *  Bei einem UNFALL gilt das Gegenteil: Sicherheitsrelevant, deshalb so genau wie möglich (Ausfahrt/
  *  Streckenabschnitt aus der Anschlussstellen-Tabelle) – dazu klar sagen, ob die Polizei vor Ort ist. */
 function trafficLine(
@@ -347,14 +356,14 @@ function trafficLine(
       sectionForPlace(road, item.place ?? "") ||
       sectionForPlace(road, textPlace) ||
       betweenOf(raw) ||
-      "im Streckenverlauf"
-    : "im Streckenverlauf";
+      vagueLocation(index)
+    : vagueLocation(index);
   const dir = directionOf(raw);
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);
   const km = kmOf(raw, index + road.length);
   const minutes = minutesOf(raw, km);
-  const place = clean(`${dir} ${where}`) || "im Streckenverlauf";
+  const place = clean(`${dir} ${where}`) || "in der Region";
   const policeNote = isAccident ? ` ${policeStatus(raw, index)}` : "";
 
   if (/vollsperr|gesperrt/i.test(raw)) {
@@ -557,11 +566,12 @@ export function blitzerLine(ctx: PlanContext) {
     .filter((h) => h.type === "blitzer")
     .slice(0, 5);
   if (!list.length) return "";
-  const lines = list.map((h) => {
+  const lines = list.map((h, i) => {
     const detail = stripExactSpot(h.message ?? "");
+    const vague = vagueLocation(i);
     return clean(
       `${h.region === "Saarland" ? "Im Saarland" : "In Rheinland-Pfalz"}: ${
-        h.road ? `auf der ${h.road}, im Streckenverlauf` : "im Streckenverlauf"
+        h.road ? `auf der ${h.road}${vague ? `, ${vague}` : ""}` : vague || "in der Region"
       }${detail ? `, ${detail.replace(/[.!?]+$/, "")}` : ""}`,
     );
   });
