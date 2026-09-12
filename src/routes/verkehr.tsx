@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { RefreshCw, TrafficCone, Radar } from "lucide-react";
+import { RefreshCw, TrafficCone, Radar, AlertTriangle, Ban, Construction } from "lucide-react";
 
 const TITLE = "Staus & Blitzer – Welle Südwest";
 const DESCRIPTION =
@@ -19,6 +19,8 @@ export const Route = createFileRoute("/verkehr")({
   component: Verkehr,
 });
 
+type Category = "unfall" | "sperrung" | "baustelle" | "stau";
+
 type TrafficItem = {
   id: string;
   road: string;
@@ -26,6 +28,8 @@ type TrafficItem = {
   headline: string;
   message: string;
   since: string | null;
+  category: Category;
+  urgent: boolean;
 };
 
 type HotlineItem = {
@@ -37,9 +41,46 @@ type HotlineItem = {
   createdAt: number;
 };
 
+/** Hörer-Verkehrsmeldungen (nicht Blitzer) sind zusätzlich klassifiziert wie der offizielle Feed. */
+type HotlineTrafficItem = HotlineItem & { category: Category; urgent: boolean };
+
+const CATEGORY_LABEL: Record<Category, string> = {
+  unfall: "Unfall",
+  sperrung: "Sperrung",
+  baustelle: "Baustelle",
+  stau: "Stau",
+};
+
+const CATEGORY_ICON: Record<Category, typeof AlertTriangle> = {
+  unfall: AlertTriangle,
+  sperrung: Ban,
+  baustelle: Construction,
+  stau: TrafficCone,
+};
+
+/** Unfälle/Sperrungen deutlich hervorgehoben (rot), Baustelle gedämpfter (Bernstein), gewöhnlicher
+ *  Stau neutral – damit sicherheitsrelevante Meldungen auf den ersten Blick auffallen, statt in
+ *  einer unsortierten, gleich aussehenden Liste unterzugehen. */
+function CategoryBadge({ category }: { category: Category }) {
+  const Icon = CATEGORY_ICON[category];
+  const style =
+    category === "unfall" || category === "sperrung"
+      ? "border-destructive/50 bg-destructive/10 text-destructive"
+      : category === "baustelle"
+        ? "border-signal/50 bg-signal/10 text-signal"
+        : "border-border bg-secondary/40 text-muted-foreground";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold uppercase tracking-widest ${style}`}
+    >
+      <Icon className="size-3" /> {CATEGORY_LABEL[category]}
+    </span>
+  );
+}
+
 type Overview = {
   traffic: TrafficItem[];
-  hotlineTraffic: HotlineItem[];
+  hotlineTraffic: HotlineTrafficItem[];
   blitzer: HotlineItem[];
   updatedAt: number;
 };
@@ -130,8 +171,14 @@ function Verkehr() {
               <div key={i} className="h-16 animate-pulse rounded-lg bg-secondary/40" />
             ))}
           {data?.traffic.map((t) => (
-            <div key={t.id} className="rounded-lg border border-border bg-secondary/40 p-3">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div
+              key={t.id}
+              className={`rounded-lg border p-3 ${
+                t.urgent ? "border-destructive/40 bg-destructive/5" : "border-border bg-secondary/40"
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <CategoryBadge category={t.category} />
                 <RegionBadge region={t.region} />
                 {t.road && <span className="font-semibold">{t.road}</span>}
               </div>
@@ -157,9 +204,15 @@ function Verkehr() {
             <p className="text-sm text-muted-foreground">Aktuell keine Hörer-Meldungen.</p>
           )}
           {data?.hotlineTraffic.map((h) => (
-            <div key={h.id} className="rounded-lg border border-border bg-secondary/40 p-3">
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-2">
+            <div
+              key={h.id}
+              className={`rounded-lg border p-3 ${
+                h.urgent ? "border-destructive/40 bg-destructive/5" : "border-border bg-secondary/40"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="flex flex-wrap items-center gap-2">
+                  <CategoryBadge category={h.category} />
                   <RegionBadge region={h.region} />
                   {(h.place || h.road) && (
                     <span className="font-semibold">{h.place || h.road}</span>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Loader2, Play, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { speakDuration } from "@/lib/planner";
+import { speakDuration, dedupeByLocation } from "@/lib/planner";
 import { manualItem } from "@/lib/use-radio-engine";
 import type { HotlineReport, NewsFeedItem, PlanItem, TrafficFeedItem } from "@/lib/broadcast-types";
 
@@ -67,7 +67,9 @@ export function TextStudioPanel(props: Props) {
   // Hörer-Verkehrsmeldungen fehlten hier bisher komplett (nur der offizielle Feed wurde gezeigt
   // und in den Sprechtext-Entwurf übernommen) - gehören aber genauso dazu wie im tatsächlichen
   // gesprochenen Verkehrsblock (siehe trafficText in planner.ts, das sie längst einbezieht).
-  const hotlineTrafficReports = props.hotline.filter((h) => h.type === "verkehr").slice(0, 8);
+  const hotlineTrafficReports = dedupeByLocation(
+    props.hotline.filter((h) => h.type === "verkehr"),
+  ).slice(0, 8);
 
   const trafficBrief = [
     ...props.traffic.slice(0, 8).map((t) => `Verkehr ${t.road} (${t.region}): ${t.message || t.headline}`),
@@ -77,7 +79,7 @@ export function TextStudioPanel(props: Props) {
     ),
   ].join("\n");
 
-  const blitzers = props.hotline.filter((h) => h.type === "blitzer").slice(0, 8);
+  const blitzers = dedupeByLocation(props.hotline.filter((h) => h.type === "blitzer")).slice(0, 8);
   const blitzerBrief = blitzers
     .map(
       (h) =>

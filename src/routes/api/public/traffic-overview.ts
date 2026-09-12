@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getTrafficSnapshot, startStationEngine } from "@/lib/server/station-engine";
 import { listHotlineReports } from "@/lib/server/hotline-store";
-import { stripExactSpot } from "@/lib/planner";
+import { stripExactSpot, classifyTraffic, dedupeByLocation } from "@/lib/planner";
 
 startStationEngine();
 
@@ -28,40 +28,47 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
         const traffic = getTrafficSnapshot();
         const now = Date.now();
         const fresh = listHotlineReports().filter((h) => now - h.createdAt < FRESH_MS);
-        const blitzer = fresh
-          .filter((h) => h.type === "blitzer")
-          .map((h) => ({
-            id: h.id,
-            region: h.region,
-            place: h.place || null,
-            road: h.road || null,
-            message: stripExactSpot(h.message ?? "") || null,
-            createdAt: h.createdAt,
-          }));
+        // Mehrere Anrufe zur selben Stelle (unterschiedlich formuliert) nicht mehrfach zeigen -
+        // siehe dedupeByLocation in planner.ts.
+        const blitzer = dedupeByLocation(fresh.filter((h) => h.type === "blitzer")).map((h) => ({
+          id: h.id,
+          region: h.region,
+          place: h.place || null,
+          road: h.road || null,
+          message: stripExactSpot(h.message ?? "") || null,
+          createdAt: h.createdAt,
+        }));
         // Hörer-Verkehrsmeldungen (Stau/Unfall/Sperrung) fehlten hier bisher komplett – nur
         // Blitzer wurde gezeigt. Gehören genauso zur Übersicht wie im gesprochenen Verkehrsblock
         // (siehe trafficText in planner.ts, das sie inzwischen auch zuverlässig einbezieht).
-        const hotlineTraffic = fresh
-          .filter((h) => h.type === "verkehr")
-          .map((h) => ({
+        const hotlineTraffic = dedupeByLocation(fresh.filter((h) => h.type === "verkehr")).map(
+          (h) => ({
             id: h.id,
             region: h.region,
             place: h.place || null,
             road: h.road || null,
             message: stripExactSpot(h.message ?? "") || null,
             createdAt: h.createdAt,
-          }));
+            ...classifyTraffic(`${h.place ?? ""} ${h.road ?? ""} ${h.message ?? ""}`),
+          }),
+        );
+        // Nach Dringlichkeit sortiert (Unfälle/Sperrungen zuerst) statt in Feed-Reihenfolge - siehe
+        // classifyTraffic in planner.ts, dieselbe Einordnung wie im gesprochenen Verkehrsblock.
+        const trafficWithCategory = traffic
+          .map((t) => ({
+            id: t.id,
+            road: t.road,
+            region: t.region,
+            headline: t.headline,
+            message: t.message,
+            since: t.since,
+            ...classifyTraffic(`${t.headline} ${t.message}`),
+          }))
+          .sort((a, b) => Number(b.urgent) - Number(a.urgent));
         return Response.json(
           {
-            traffic: traffic.map((t) => ({
-              id: t.id,
-              road: t.road,
-              region: t.region,
-              headline: t.headline,
-              message: t.message,
-              since: t.since,
-            })),
-            hotlineTraffic,
+            traffic: trafficWithCategory,
+            hotlineTraffic: hotlineTraffic.sort((a, b) => Number(b.urgent) - Number(a.urgent)),
             blitzer,
             updatedAt: now,
           },

@@ -226,6 +226,28 @@ const SPONTAN =
 const RELEVANT =
   /(stau|stockend|zäh|behinderung|verzöger|baustelle|verengung|unfall|stillstand|reisezeitverlust|gesperrt|sperrung)/i;
 
+export type TrafficCategory = "unfall" | "sperrung" | "baustelle" | "stau";
+
+/** Klassifiziert einen Verkehrstext in dieselben Kategorien, die trafficLine() unten auch für die
+ *  Formulierung verwendet (Unfall > Sperrung > Baustelle > sonstiger Stau) – für die öffentliche
+ *  Verkehrsseite, damit dort sofort erkennbar ist, was wirklich sicherheitsrelevant ist (Unfall/
+ *  Sperrung), statt Unfälle in einer unsortierten Liste zwischen gewöhnlichen Staus zu verstecken. */
+export function classifyTraffic(text: string): { category: TrafficCategory; urgent: boolean } {
+  const isAccident = /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(
+    text,
+  );
+  const isClosure = /vollsperr|gesperrt/i.test(text);
+  const isConstruction = /baustelle|bauarbeiten|verengung/i.test(text);
+  const category: TrafficCategory = isAccident
+    ? "unfall"
+    : isClosure
+      ? "sperrung"
+      : isConstruction
+        ? "baustelle"
+        : "stau";
+  return { category, urgent: URGENT.test(text) };
+}
+
 function reasonOf(text: string) {
   const t = text.toLowerCase();
   if (/unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß/.test(t))
@@ -491,16 +513,17 @@ export function trafficText(ctx: PlanContext, at: number) {
   // wurde nie vorgelesen, obwohl sie eindeutig eine echte Verkehrslage war. Blitzer- und
   // Wetter-Hörermeldungen (blitzerLine/weatherListenerLine) vertrauen der Typ-Auswahl schon länger
   // genauso, ohne eigenen Schlagwort-Filter.
-  const hotline = freshHotline(ctx)
-    .filter((h) => h.type === "verkehr")
-    .filter(
-      (h) =>
-        !feedRelevant.some(
-          (t) =>
-            roadKeyOf(t.road) === roadKeyOf(h.road) && placeHits(h, `${t.headline} ${t.message}`),
-        ),
-    )
-    .slice(0, 3);
+  const hotline = dedupeByLocation(
+    freshHotline(ctx)
+      .filter((h) => h.type === "verkehr")
+      .filter(
+        (h) =>
+          !feedRelevant.some(
+            (t) =>
+              roadKeyOf(t.road) === roadKeyOf(h.road) && placeHits(h, `${t.headline} ${t.message}`),
+          ),
+      ),
+  ).slice(0, 3);
 
   const feedLines = feedRelevant.map((t, i) => trafficLine(t, i));
   const hotlineLines = hotline.map((h, i) => listenerTrafficLine(h, i + feedRelevant.length));
@@ -548,6 +571,56 @@ function freshHotline(ctx: PlanContext) {
   return (ctx.hotline ?? []).filter((h) => now - h.createdAt < 6 * 3600_000);
 }
 
+/** Häufige, generische Wörter aus dem freien Meldungstext, die NICHT als Orts-Merkmal zählen
+ *  dürfen – sonst gelten zwei Meldungen an völlig unterschiedlichen Orten fälschlich als
+ *  Dopplung, nur weil beide z. B. "Mobiler Blitzer Richtung ..." schreiben. */
+const LOCATION_STOPWORDS = new Set([
+  "mobiler",
+  "blitzer",
+  "richtung",
+  "gemeldet",
+  "meldung",
+  "geblitzt",
+  "gesichtet",
+  "fahrtrichtung",
+  "aktuell",
+  "zwischen",
+]);
+
+/** Signifikante Wörter (≥4 Zeichen) aus Ort/Straße – Grundlage für den Dopplungs-Abgleich unten.
+ *  Bewusst OHNE die freie Nachricht: die teilt sich zu leicht generisches Vokabular ("Mobiler
+ *  Blitzer Richtung ...") zwischen völlig unterschiedlichen Orten, das wäre eine falsche Dopplung. */
+function locationWords(h: HotlineReport): Set<string> {
+  const text = `${h.place ?? ""} ${h.road ?? ""}`.toLowerCase();
+  return new Set(
+    text.split(/[^a-zäöüß0-9]+/).filter((w) => w.length >= 4 && !LOCATION_STOPWORDS.has(w)),
+  );
+}
+
+/** Mehrere Hörer-Meldungen (gleicher Typ) zur selben Stelle – z. B. drei Anrufe zu demselben
+ *  Blitzer zwischen Eppelborn und Hirschweiler, jeweils mit anderer Formulierung – sollen nicht
+ *  mehrfach vorgelesen/angezeigt werden. "Gleiche Stelle" wird bewusst NICHT über exakten
+ *  Textvergleich erkannt (die Formulierungen unterscheiden sich meist), sondern darüber, ob sich
+ *  Ort/Straße/Nachricht ein nennenswertes Wort teilen (z. B. beide nennen "eppelborn"). Neuere
+ *  Meldungen gewinnen (aktuellste Formulierung/Uhrzeit bleibt erhalten). */
+export function dedupeByLocation(reports: HotlineReport[]): HotlineReport[] {
+  const sorted = [...reports].sort((a, b) => b.createdAt - a.createdAt);
+  const kept: HotlineReport[] = [];
+  const keptWords: Set<string>[] = [];
+  for (const h of sorted) {
+    const words = locationWords(h);
+    const isDuplicate = keptWords.some((existing) => {
+      for (const w of words) if (existing.has(w)) return true;
+      return false;
+    });
+    if (isDuplicate) continue;
+    kept.push(h);
+    keptWords.push(words);
+  }
+  // Wieder in der ursprünglichen (ältesten-zuerst-)Reihenfolge zurückgeben, wie freshHotline sie liefert.
+  return kept.sort((a, b) => a.createdAt - b.createdAt);
+}
+
 /** Wetter-Hörermeldungen (1-2) für den Wetterblock – passend zum Thema, nicht generisch verstreut. */
 function weatherListenerLine(ctx: PlanContext) {
   const list = freshHotline(ctx)
@@ -567,26 +640,38 @@ function weatherListenerLine(ctx: PlanContext) {
  *  Ausgangsmaterial vorliegt, den die KI versehentlich übernehmen könnte. */
 export function stripExactSpot(text: string): string {
   const stripped = text
+    // "auf/bei/in/nahe Höhe X" MUSS vor den generischen Ausfahrt/Rastanlage-Mustern unten laufen:
+    // "Rastanlage" ist selbst eines der dortigen Schlagwörter, würde also z. B. bei "auf Höhe
+    // Rastanlage Sankt Wendel" schon vorher isoliert entfernt und "auf Höhe" grammatisch kaputt
+    // zurücklassen. Die Ortsangabe nach "Höhe" darf mehrere Wörter haben ("Rastanlage Sankt
+    // Wendel"), deshalb "*" statt "?" bei der Wiederholung.
+    .replace(
+      /\b(?:auf|bei|in|nahe)\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)*/gi,
+      "",
+    )
+    .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)*/gi, "")
     // Verbindungswort ("direkt an der", "bei der", "nahe der") gleich MIT entfernen, nicht nur
     // die Ausfahrt/Anschlussstelle selbst – sonst bleibt ein grammatisch kaputtes Fragment übrig
     // ("... direkt an der ,." statt eines sauberen Satzendes).
     .replace(
-      /\b(?:direkt\s+)?(?:an|bei|nahe)\s+(?:der\s+|dem\s+)?(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?/gi,
+      /\b(?:direkt\s+)?(?:an|bei|nahe)\s+(?:der\s+|dem\s+)?(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)*/gi,
       "",
     )
     .replace(
-      /\b(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?/g,
+      /\b(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)*/g,
       "",
     )
-    .replace(/\bin\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
-    .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)?/gi, "")
     .replace(/\bbei\s+km\s*\d+(?:[.,]\d+)?/gi, "")
     .replace(/\bkm\s*\d+(?:[.,]\d+)?/gi, "")
     .replace(/\bzwischen\s+.+?\s+und\s+[^,.;]+/gi, "")
     // Nach dem Entfernen bleiben oft doppelte/verwaiste Kommas oder ein Komma direkt vor dem
     // Satzende übrig ("... Saarbrücken, , km 12,3." → "... Saarbrücken, .") – hier aufräumen.
     .replace(/\s*,\s*,/g, ",")
-    .replace(/,\s*([.!?]|$)/g, "$1");
+    .replace(/,\s*([.!?]|$)/g, "$1")
+    // Letzte Sicherheitsnetz-Regel: ein einzelnes Verbindungswort ganz ohne Objekt danach (weil das
+    // Ziel schon durch eine der Regeln oben entfernt wurde), direkt vor Satzende/Satzzeichen -
+    // genau der Fall aus dem gemeldeten Beispiel ("A8 Richtung Pirmasens/Karlsruhe auf.").
+    .replace(/\b(?:auf|an|bei|in|nahe|Richtung)\s*(?=[.,;]|$)/gi, "");
   return clean(stripped);
 }
 
@@ -620,9 +705,7 @@ function blitzerOrtPhrase(place: string, road: string, index: number): string {
  *  Regieanweisung on air ("bewusst nur ungenau ...") – klang wie eine vorgelesene
  *  Redaktionsrichtlinie statt echtem Radio, einfach ganz normal sprechen. */
 export function blitzerLine(ctx: PlanContext) {
-  const list = freshHotline(ctx)
-    .filter((h) => h.type === "blitzer")
-    .slice(0, 5);
+  const list = dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).slice(0, 5);
   if (!list.length) return "";
   // Bewusst nur noch eine einfache Ortsliste, keine Region je Meldung und keine zusätzliche
   // Detail-/Nachrichtenzeile mehr – ein Blitzer-Service ist im echten Radio kurz und listenartig
@@ -641,7 +724,7 @@ export function blitzerLine(ctx: PlanContext) {
 
 /** Anzahl frischer Blitzer-Meldungen – steuert den eigenen Blitzer-Block im Plan. */
 export function blitzerCount(ctx: PlanContext) {
-  return freshHotline(ctx).filter((h) => h.type === "blitzer").length;
+  return dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).length;
 }
 
 /** Wichtige Meldungen (Unfälle, Sperrungen, Gefahren) – nur wenn es wirklich etwas gibt. */
