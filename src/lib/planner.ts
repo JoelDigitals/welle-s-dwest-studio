@@ -477,13 +477,15 @@ export function trafficText(ctx: PlanContext, at: number) {
     })
     .slice(0, 4);
 
-  // Hörer-Verkehrsmeldungen aus der Hotline: nur echte Lagen, nicht schon durch den Feed abgedeckt.
+  // Hörer-Verkehrsmeldungen aus der Hotline: der Anrufer/die Anruferin hat den Typ "Verkehr"
+  // bereits selbst gewählt - das reicht als Relevanz-Kriterium (kein zusätzlicher Stau/Unfall-
+  // Schlagwort-Filter mehr). Der war zu streng: eine frei formulierte Meldung ohne genau eines der
+  // erwarteten Schlagworte (z. B. "Auf der A6 geht gerade gar nichts") fiel sonst komplett raus und
+  // wurde nie vorgelesen, obwohl sie eindeutig eine echte Verkehrslage war. Blitzer- und
+  // Wetter-Hörermeldungen (blitzerLine/weatherListenerLine) vertrauen der Typ-Auswahl schon länger
+  // genauso, ohne eigenen Schlagwort-Filter.
   const hotline = freshHotline(ctx)
     .filter((h) => h.type === "verkehr")
-    .filter((h) => {
-      const s = `${h.road ?? ""} ${h.place ?? ""} ${h.message ?? ""}`;
-      return URGENT.test(s) || RELEVANT.test(s);
-    })
     .filter(
       (h) =>
         !feedRelevant.some(
