@@ -11,11 +11,14 @@ const cors = {
   "Cache-Control": "no-store",
 };
 
+const FRESH_MS = 6 * 3600_000;
+
 /**
  * Öffentliche Staus/Blitzer-Übersicht für die Homepage (siehe /verkehr) – dieselben Daten, die
  * auch on air verwendet werden (offizielle Autobahn-API + RSS für Verkehr, Hörer-Hotline für
- * Blitzer). Blitzer bewusst ohne exakten Ort (siehe stripExactSpot in planner.ts) – aus denselben
- * rechtlichen Gründen wie on air (vergleichbar mit dem Verbot von Radarwarn-Geräten/-Apps).
+ * Verkehr + Blitzer). Blitzer UND Hörer-Verkehrsmeldungen bewusst ohne exakten Ort (siehe
+ * stripExactSpot in planner.ts) – aus denselben rechtlichen/stilistischen Gründen wie on air
+ * (vergleichbar mit dem Verbot von Radarwarn-Geräten/-Apps, siehe trafficLine/blitzerLine).
  */
 export const Route = createFileRoute("/api/public/traffic-overview")({
   server: {
@@ -24,11 +27,26 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
       GET: async () => {
         const traffic = getTrafficSnapshot();
         const now = Date.now();
-        const blitzer = listHotlineReports()
-          .filter((h) => h.type === "blitzer" && now - h.createdAt < 6 * 3600_000)
+        const fresh = listHotlineReports().filter((h) => now - h.createdAt < FRESH_MS);
+        const blitzer = fresh
+          .filter((h) => h.type === "blitzer")
           .map((h) => ({
             id: h.id,
             region: h.region,
+            place: h.place || null,
+            road: h.road || null,
+            message: stripExactSpot(h.message ?? "") || null,
+            createdAt: h.createdAt,
+          }));
+        // Hörer-Verkehrsmeldungen (Stau/Unfall/Sperrung) fehlten hier bisher komplett – nur
+        // Blitzer wurde gezeigt. Gehören genauso zur Übersicht wie im gesprochenen Verkehrsblock
+        // (siehe trafficText in planner.ts, das sie inzwischen auch zuverlässig einbezieht).
+        const hotlineTraffic = fresh
+          .filter((h) => h.type === "verkehr")
+          .map((h) => ({
+            id: h.id,
+            region: h.region,
+            place: h.place || null,
             road: h.road || null,
             message: stripExactSpot(h.message ?? "") || null,
             createdAt: h.createdAt,
@@ -43,6 +61,7 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
               message: t.message,
               since: t.since,
             })),
+            hotlineTraffic,
             blitzer,
             updatedAt: now,
           },

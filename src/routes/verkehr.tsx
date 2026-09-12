@@ -28,15 +28,21 @@ type TrafficItem = {
   since: string | null;
 };
 
-type BlitzerItem = {
+type HotlineItem = {
   id: string;
   region: "Saarland" | "Rheinland-Pfalz";
+  place: string | null;
   road: string | null;
   message: string | null;
   createdAt: number;
 };
 
-type Overview = { traffic: TrafficItem[]; blitzer: BlitzerItem[]; updatedAt: number };
+type Overview = {
+  traffic: TrafficItem[];
+  hotlineTraffic: HotlineItem[];
+  blitzer: HotlineItem[];
+  updatedAt: number;
+};
 
 function timeAgo(ms: number): string {
   const minutes = Math.max(0, Math.round((Date.now() - ms) / 60_000));
@@ -140,11 +146,39 @@ function Verkehr() {
 
       <section className="panel space-y-3 p-5">
         <h2 className="display flex items-center gap-2 text-xl">
+          <TrafficCone className="size-5 text-primary" /> Aus der Hörer-Hotline
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Verkehrsmeldungen, die uns Hörerinnen und Hörer direkt gemeldet haben – dieselben, die
+          auch im Programm laufen.
+        </p>
+        <div className="space-y-2">
+          {data?.hotlineTraffic.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aktuell keine Hörer-Meldungen.</p>
+          )}
+          {data?.hotlineTraffic.map((h) => (
+            <div key={h.id} className="rounded-lg border border-border bg-secondary/40 p-3">
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <RegionBadge region={h.region} />
+                  {(h.place || h.road) && (
+                    <span className="font-semibold">{h.place || h.road}</span>
+                  )}
+                </span>
+                <span>{timeAgo(h.createdAt)}</span>
+              </div>
+              {h.message && <p className="mt-1 text-sm">{h.message}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel space-y-3 p-5">
+        <h2 className="display flex items-center gap-2 text-xl">
           <Radar className="size-5 text-primary" /> Blitzer-Meldungen
         </h2>
         <p className="text-xs text-muted-foreground">
-          Aus unserer Hörer-Hotline, bewusst nur mit Streckenangabe – ohne exakten Ort (wie im
-          Radio).
+          Aus unserer Hörer-Hotline, mit Ort bzw. Ortseingang – ohne exakten Punkt (wie im Radio).
         </p>
         <div className="space-y-2">
           {data?.blitzer.length === 0 && (
@@ -155,7 +189,9 @@ function Verkehr() {
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-2">
                   <RegionBadge region={b.region} />
-                  {b.road && <span className="font-semibold">{b.road}</span>}
+                  {(b.place || b.road) && (
+                    <span className="font-semibold">{b.place || b.road}</span>
+                  )}
                 </span>
                 <span>{timeAgo(b.createdAt)}</span>
               </div>
