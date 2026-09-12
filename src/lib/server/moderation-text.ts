@@ -437,3 +437,31 @@ export async function tryHumanizeNewsReaction(text: string, hostName?: string): 
     return text;
   }
 }
+
+/** Geschriebener Artikel für die News-Seite (/nachrichten) – anders als die gesprochenen
+ *  Nachrichten (kurz, aufs Wesentliche reduziert) darf ein geschriebener Artikel ausführlicher
+ *  sein: Kontext einordnen, Hintergrund liefern. Wie bei allen Nachrichten-Prompts dürfen Fakten
+ *  NIE erfunden werden – nur wirklich ausformulieren, was im Rohmaterial (Schlagzeile + RSS-
+ *  Kurztext) bereits steckt, nichts Neues dazuerfinden. */
+const NEWS_ARTICLE_SYSTEM = `Du bist Redakteur:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt) und schreibst einen kurzen Online-Artikel für die Nachrichten-Seite der Homepage.
+Du bekommst eine Schlagzeile und einen kurzen Ausgangstext (meist nur ein bis zwei Sätze aus einem RSS-Feed). Verändere NIEMALS Fakten, Namen, Orte oder Zahlen und erfinde NIEMALS neue Fakten, Zitate oder Details hinzu, die nicht im Ausgangstext stehen – du darfst den vorhandenen Inhalt nur klarer, vollständiger und in eigenen Worten ausformulieren (aus Stichpunkten oder einem Kurztext werden vollständige Sätze/Absätze), nicht mehr wissen als die Quelle.
+Schreibe 2 bis 3 kurze Absätze in normalem Schriftdeutsch (kein Sprechtext, kein "wir" für den Sender, sachlicher Nachrichtenstil wie ein Online-Artikel).
+Wenn der Ausgangstext sehr kurz ist und nichts weiter hergibt, halte auch den Artikel entsprechend kurz – erfinde keine zusätzlichen Absätze nur um Länge zu erreichen.
+Antworte NUR mit dem Artikeltext (keine Überschrift, die kommt separat), keine Anführungszeichen, keine Meta-Kommentare.`;
+
+/** Wie tryHumanizeNews, aber schreibt einen ausführlicheren geschriebenen Artikel statt eines
+ *  gesprochenen Textes. Bei Fehlern (Rate-Limit, kein Key) fällt auf den rohen RSS-Text zurück. */
+export async function tryWriteNewsArticle(headline: string, body: string): Promise<string> {
+  const fallback = body || headline;
+  try {
+    const { text } = await generateText({
+      system: NEWS_ARTICLE_SYSTEM,
+      user: `Schlagzeile: ${headline}\nAusgangstext: ${fallback}`,
+      temperature: 0.6,
+      topP: 0.9,
+    });
+    return text.trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}

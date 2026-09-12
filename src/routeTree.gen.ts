@@ -13,8 +13,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as HotlineRouteImport } from './routes/hotline'
 import { Route as LiveStreamRouteImport } from './routes/live-stream'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NachrichtenRouteImport } from './routes/nachrichten'
 import { Route as PlayerRouteImport } from './routes/player'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as VerkehrRouteImport } from './routes/verkehr'
 import { Route as WerbungRouteImport } from './routes/werbung'
 import { Route as ApiAudioRouteImport } from './routes/api/audio'
 import { Route as ApiEngineSkipRouteImport } from './routes/api/engine-skip'
@@ -37,8 +39,10 @@ import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
 import { Route as ApiPublicAdRequestsRouteImport } from './routes/api/public/ad-requests'
 import { Route as ApiPublicHotlineRouteImport } from './routes/api/public/hotline'
+import { Route as ApiPublicNewsPageRouteImport } from './routes/api/public/news-page'
 import { Route as ApiPublicNowplayingRouteImport } from './routes/api/public/nowplaying'
 import { Route as ApiPublicOnairAudioRouteImport } from './routes/api/public/onair-audio'
+import { Route as ApiPublicTrafficOverviewRouteImport } from './routes/api/public/traffic-overview'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -60,6 +64,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NachrichtenRoute = NachrichtenRouteImport.update({
+  id: '/nachrichten',
+  path: '/nachrichten',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlayerRoute = PlayerRouteImport.update({
   id: '/player',
   path: '/player',
@@ -68,6 +77,11 @@ const PlayerRoute = PlayerRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerkehrRoute = VerkehrRouteImport.update({
+  id: '/verkehr',
+  path: '/verkehr',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WerbungRoute = WerbungRouteImport.update({
@@ -180,6 +194,11 @@ const ApiPublicHotlineRoute = ApiPublicHotlineRouteImport.update({
   path: '/api/public/hotline',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicNewsPageRoute = ApiPublicNewsPageRouteImport.update({
+  id: '/api/public/news-page',
+  path: '/api/public/news-page',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicNowplayingRoute = ApiPublicNowplayingRouteImport.update({
   id: '/api/public/nowplaying',
   path: '/api/public/nowplaying',
@@ -190,14 +209,22 @@ const ApiPublicOnairAudioRoute = ApiPublicOnairAudioRouteImport.update({
   path: '/api/public/onair-audio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTrafficOverviewRoute =
+  ApiPublicTrafficOverviewRouteImport.update({
+    id: '/api/public/traffic-overview',
+    path: '/api/public/traffic-overview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/hotline': typeof HotlineRoute
   '/live-stream': typeof LiveStreamRoute
   '/login': typeof LoginRoute
+  '/nachrichten': typeof NachrichtenRoute
   '/player': typeof PlayerRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/verkehr': typeof VerkehrRoute
   '/werbung': typeof WerbungRoute
   '/api/audio': typeof ApiAudioRoute
   '/api/engine-skip': typeof ApiEngineSkipRoute
@@ -220,16 +247,20 @@ export interface FileRoutesByFullPath {
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
+  '/api/public/news-page': typeof ApiPublicNewsPageRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
   '/api/public/onair-audio': typeof ApiPublicOnairAudioRoute
+  '/api/public/traffic-overview': typeof ApiPublicTrafficOverviewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/hotline': typeof HotlineRoute
   '/live-stream': typeof LiveStreamRoute
   '/login': typeof LoginRoute
+  '/nachrichten': typeof NachrichtenRoute
   '/player': typeof PlayerRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/verkehr': typeof VerkehrRoute
   '/werbung': typeof WerbungRoute
   '/api/audio': typeof ApiAudioRoute
   '/api/engine-skip': typeof ApiEngineSkipRoute
@@ -252,8 +283,10 @@ export interface FileRoutesByTo {
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
+  '/api/public/news-page': typeof ApiPublicNewsPageRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
   '/api/public/onair-audio': typeof ApiPublicOnairAudioRoute
+  '/api/public/traffic-overview': typeof ApiPublicTrafficOverviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -261,8 +294,10 @@ export interface FileRoutesById {
   '/hotline': typeof HotlineRoute
   '/live-stream': typeof LiveStreamRoute
   '/login': typeof LoginRoute
+  '/nachrichten': typeof NachrichtenRoute
   '/player': typeof PlayerRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/verkehr': typeof VerkehrRoute
   '/werbung': typeof WerbungRoute
   '/api/audio': typeof ApiAudioRoute
   '/api/engine-skip': typeof ApiEngineSkipRoute
@@ -285,8 +320,10 @@ export interface FileRoutesById {
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
+  '/api/public/news-page': typeof ApiPublicNewsPageRoute
   '/api/public/nowplaying': typeof ApiPublicNowplayingRoute
   '/api/public/onair-audio': typeof ApiPublicOnairAudioRoute
+  '/api/public/traffic-overview': typeof ApiPublicTrafficOverviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -295,8 +332,10 @@ export interface FileRouteTypes {
     | '/hotline'
     | '/live-stream'
     | '/login'
+    | '/nachrichten'
     | '/player'
     | '/sitemap.xml'
+    | '/verkehr'
     | '/werbung'
     | '/api/audio'
     | '/api/engine-skip'
@@ -319,16 +358,20 @@ export interface FileRouteTypes {
     | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
+    | '/api/public/news-page'
     | '/api/public/nowplaying'
     | '/api/public/onair-audio'
+    | '/api/public/traffic-overview'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/hotline'
     | '/live-stream'
     | '/login'
+    | '/nachrichten'
     | '/player'
     | '/sitemap.xml'
+    | '/verkehr'
     | '/werbung'
     | '/api/audio'
     | '/api/engine-skip'
@@ -351,16 +394,20 @@ export interface FileRouteTypes {
     | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
+    | '/api/public/news-page'
     | '/api/public/nowplaying'
     | '/api/public/onair-audio'
+    | '/api/public/traffic-overview'
   id:
     | '__root__'
     | '/'
     | '/hotline'
     | '/live-stream'
     | '/login'
+    | '/nachrichten'
     | '/player'
     | '/sitemap.xml'
+    | '/verkehr'
     | '/werbung'
     | '/api/audio'
     | '/api/engine-skip'
@@ -383,8 +430,10 @@ export interface FileRouteTypes {
     | '/api/auth/register'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
+    | '/api/public/news-page'
     | '/api/public/nowplaying'
     | '/api/public/onair-audio'
+    | '/api/public/traffic-overview'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -392,8 +441,10 @@ export interface RootRouteChildren {
   HotlineRoute: typeof HotlineRoute
   LiveStreamRoute: typeof LiveStreamRoute
   LoginRoute: typeof LoginRoute
+  NachrichtenRoute: typeof NachrichtenRoute
   PlayerRoute: typeof PlayerRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  VerkehrRoute: typeof VerkehrRoute
   WerbungRoute: typeof WerbungRoute
   ApiAudioRoute: typeof ApiAudioRoute
   ApiEngineSkipRoute: typeof ApiEngineSkipRoute
@@ -416,8 +467,10 @@ export interface RootRouteChildren {
   ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
   ApiPublicAdRequestsRoute: typeof ApiPublicAdRequestsRoute
   ApiPublicHotlineRoute: typeof ApiPublicHotlineRoute
+  ApiPublicNewsPageRoute: typeof ApiPublicNewsPageRoute
   ApiPublicNowplayingRoute: typeof ApiPublicNowplayingRoute
   ApiPublicOnairAudioRoute: typeof ApiPublicOnairAudioRoute
+  ApiPublicTrafficOverviewRoute: typeof ApiPublicTrafficOverviewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -450,6 +503,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/nachrichten': {
+      id: '/nachrichten'
+      path: '/nachrichten'
+      fullPath: '/nachrichten'
+      preLoaderRoute: typeof NachrichtenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/player': {
       id: '/player'
       path: '/player'
@@ -462,6 +522,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verkehr': {
+      id: '/verkehr'
+      path: '/verkehr'
+      fullPath: '/verkehr'
+      preLoaderRoute: typeof VerkehrRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/werbung': {
@@ -618,6 +685,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHotlineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/news-page': {
+      id: '/api/public/news-page'
+      path: '/api/public/news-page'
+      fullPath: '/api/public/news-page'
+      preLoaderRoute: typeof ApiPublicNewsPageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/nowplaying': {
       id: '/api/public/nowplaying'
       path: '/api/public/nowplaying'
@@ -632,6 +706,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicOnairAudioRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/traffic-overview': {
+      id: '/api/public/traffic-overview'
+      path: '/api/public/traffic-overview'
+      fullPath: '/api/public/traffic-overview'
+      preLoaderRoute: typeof ApiPublicTrafficOverviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -640,8 +721,10 @@ const rootRouteChildren: RootRouteChildren = {
   HotlineRoute: HotlineRoute,
   LiveStreamRoute: LiveStreamRoute,
   LoginRoute: LoginRoute,
+  NachrichtenRoute: NachrichtenRoute,
   PlayerRoute: PlayerRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  VerkehrRoute: VerkehrRoute,
   WerbungRoute: WerbungRoute,
   ApiAudioRoute: ApiAudioRoute,
   ApiEngineSkipRoute: ApiEngineSkipRoute,
@@ -664,8 +747,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthRegisterRoute: ApiAuthRegisterRoute,
   ApiPublicAdRequestsRoute: ApiPublicAdRequestsRoute,
   ApiPublicHotlineRoute: ApiPublicHotlineRoute,
+  ApiPublicNewsPageRoute: ApiPublicNewsPageRoute,
   ApiPublicNowplayingRoute: ApiPublicNowplayingRoute,
   ApiPublicOnairAudioRoute: ApiPublicOnairAudioRoute,
+  ApiPublicTrafficOverviewRoute: ApiPublicTrafficOverviewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

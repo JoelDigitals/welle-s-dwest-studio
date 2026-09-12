@@ -184,9 +184,14 @@ function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: 
     const connect = i === 0 || !connector ? "" : `${connector} `;
     return `${connect}${lead ? `${lead}: ` : ""}${head}${body}${author}`;
   });
+  // Verweis auf die News-Seite (/nachrichten) nur bei den ausführlichen Nachrichten zur vollen
+  // Stunde, nicht bei jeder Kurznachricht – sonst wirkt der Hinweis selbst wie eine abgehakte
+  // Wiederholung.
+  const homepageHint =
+    mode === "full" ? " Mehr dazu und weitere Meldungen zum Nachlesen auf unserer Homepage." : "";
   const outro =
     mode === "full"
-      ? `Das waren die Nachrichten von Welle Südwest. Am Mikrofon ${host.name}. Die nächsten Nachrichten hören Sie zur halben Stunde. Und jetzt der Verkehr.`
+      ? `Das waren die Nachrichten von Welle Südwest. Am Mikrofon ${host.name}.${homepageHint} Die nächsten Nachrichten hören Sie zur halben Stunde. Und jetzt der Verkehr.`
       : `Mehr Nachrichten zur vollen Stunde. Am Mikrofon ${host.name}. Jetzt der Verkehr.`;
   return `${parts.join(" ")} ${outro}`;
 }
@@ -529,7 +534,7 @@ function weatherListenerLine(ctx: PlanContext) {
  *  (vergleichbar mit dem Verbot von Radarwarn-Geräten/-Apps, StVO §23 1c), nur der allgemeine
  *  Streckenverlauf. Läuft VOR der KI-Umformulierung, damit ein exakter Punkt gar nicht erst als
  *  Ausgangsmaterial vorliegt, den die KI versehentlich übernehmen könnte. */
-function stripExactSpot(text: string): string {
+export function stripExactSpot(text: string): string {
   return clean(
     text
       .replace(

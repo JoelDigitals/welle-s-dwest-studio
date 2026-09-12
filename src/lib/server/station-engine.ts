@@ -884,3 +884,14 @@ export function reorderLiveQueue(fromUid: string, toUid: string) {
 export function getLiveQueue(): PlanItem[] {
   return getState().liveQueue;
 }
+
+/** Aktueller Verkehrs-Snapshot (offizielle Autobahn-API + RSS) – für die öffentliche
+ *  Staus/Blitzer-Übersicht auf der Homepage (siehe /api/public/traffic-overview). */
+export function getTrafficSnapshot(): TrafficFeedItem[] {
+  return getState().traffic.items;
+}
+
+/** Aktueller Nachrichten-Snapshot – für die öffentliche News-Seite (siehe /api/public/news-page). */
+export function getNewsSnapshot(): NewsFeedItem[] {
+  return getState().news.items;
+}
