@@ -25,6 +25,7 @@ import type {
 import { liveSlotAt } from "./studio-store";
 import { exactSection, sectionForPlace } from "./autobahn-exits";
 import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
+import { weatherCodeToSky } from "./weather-codes";
 
 let counter = 0;
 const uid = () => `p${++counter}-${Math.random().toString(36).slice(2, 8)}`;
@@ -295,12 +296,22 @@ function directionOf(text: string) {
 
 /** Ob und was der Meldungstext über einen Polizeieinsatz vor Ort verrät – bei Unfällen soll das
  *  immer klar gesagt werden, nicht offenbleiben. */
-function policeStatus(raw: string): string {
+/** Nicht mehr immer derselbe robotische Satz ("Zum Polizeieinsatz liegen uns noch keine Angaben
+ *  vor"), wenn der Meldungstext nichts zur Polizei sagt – stattdessen abwechselnde, nützlichere
+ *  Formulierungen mit einem echten Verhaltenshinweis fürs Vorsichtigfahren. */
+const POLICE_UNKNOWN = [
+  "Die Polizei ist noch nicht vor Ort, fahren Sie deshalb besonders vorsichtig.",
+  "Ob die Polizei schon vor Ort ist, ist noch unklar – seien Sie an der Stelle besonders aufmerksam.",
+  "Rettungskräfte sind unterwegs. Fahren Sie an der Unfallstelle bitte besonders vorsichtig.",
+  "Details zum Polizeieinsatz liegen uns noch nicht vor, bitte trotzdem mit Vorsicht vorbeifahren.",
+];
+
+function policeStatus(raw: string, index: number): string {
   if (/polizei[^.]{0,25}(vor ort|im einsatz|ist da|eingetroffen)|vor ort[^.]{0,25}polizei/i.test(raw)) {
     return "Die Polizei ist vor Ort.";
   }
   if (/polizei/i.test(raw)) return "Die Polizei wurde informiert.";
-  return "Zum Polizeieinsatz liegen uns noch keine Angaben vor.";
+  return pick(POLICE_UNKNOWN, index);
 }
 
 /** Eine natürlich klingende Verkehrsmeldung im Radiostil. Die Position wird bei normalem Stau/
@@ -339,7 +350,7 @@ function trafficLine(
   const km = kmOf(raw, index + road.length);
   const minutes = minutesOf(raw, km);
   const place = clean(`${dir} ${where}`) || "im Streckenverlauf";
-  const policeNote = isAccident ? ` ${policeStatus(raw)}` : "";
+  const policeNote = isAccident ? ` ${policeStatus(raw, index)}` : "";
 
   if (/vollsperr|gesperrt/i.test(raw)) {
     return clean(
@@ -589,25 +600,52 @@ export function urgentText(ctx: PlanContext) {
 
 const SEASON_TEMP = [4, 5, 9, 14, 19, 23, 25, 25, 20, 14, 8, 5];
 
+/** Windrichtung in Grad → deutscher Himmelsrichtungsname. */
+function windDirectionWord(deg: number): string {
+  const dirs = [
+    "Nord",
+    "Nordost",
+    "Ost",
+    "Südost",
+    "Süd",
+    "Südwest",
+    "West",
+    "Nordwest",
+  ];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
 function weatherText(host: Host, at: number, outlook: boolean, ctx?: PlanContext) {
   const hour = berlinHour(at);
   const date = berlinDate(at);
+  const w = ctx?.weather;
+  // Echtes Wetter (Open-Meteo, siehe fetch-weather.ts), wenn vorhanden – sonst Fallback auf die
+  // alte rein rechnerische Schätzung, damit die Sendung auch bei kurzzeitigem API-Ausfall
+  // lauffähig bleibt.
   const base = SEASON_TEMP[berlinMonth(at)];
-  const high = base + (date % 4) - 1;
-  const low = Math.max(-6, high - 7);
-  const sky = pick(
-    [
-      "wechselnd bewölkt mit längeren freundlichen Abschnitten",
-      "zunächst dicht bewölkt, im Tagesverlauf lockert es auf",
-      "meist freundlich, nur wenige Wolkenfelder",
-      "stark bewölkt und zeitweise etwas Regen",
-    ],
-    date + hour,
-  );
-  const wind = pick(
-    ["schwacher Wind aus Südwest", "mäßiger Wind aus West, in Böen frisch", "kaum Wind"],
-    date,
-  );
+  const high = w ? w.currentTemp : base + (date % 4) - 1;
+  const low = w ? Math.min(w.currentTemp, w.daily[0]?.min ?? w.currentTemp - 6) : Math.max(-6, high - 7);
+  const sky = w
+    ? weatherCodeToSky(w.currentCode)
+    : pick(
+        [
+          "wechselnd bewölktem Himmel mit längeren freundlichen Abschnitten",
+          "zunächst dichter Bewölkung, die sich im Tagesverlauf lockert",
+          "meist freundlichem Himmel, nur wenigen Wolkenfeldern",
+          "starker Bewölkung und zeitweise etwas Regen",
+        ],
+        date + hour,
+      );
+  const wind = w
+    ? `${w.windSpeedKmh < 10 ? "schwachem" : w.windSpeedKmh < 30 ? "mäßigem" : "kräftigem"} Wind aus ${windDirectionWord(w.windDirectionDeg)}${w.windSpeedKmh >= 30 ? ", in Böen auch stürmisch" : ""}`
+    : pick(
+        ["schwachem Wind aus Südwest", "mäßigem Wind aus West, in Böen frisch", "kaum Wind"],
+        date,
+      );
+  // Höhenlagen (Hunsrück/Eifel/Pfälzerwald, grob 600m) über den Standard-Temperaturgradienten
+  // (~0,65 °C je 100 Höhenmeter) aus der echten Messung geschätzt, statt eines festen Abschlags.
+  const heightDiff = w ? Math.max(0, 600 - w.elevation) : 400;
+  const heightDrop = w ? Math.round((heightDiff / 100) * 0.65) : 3;
   const teil =
     hour < 11
       ? "am Vormittag"
@@ -617,12 +655,12 @@ function weatherText(host: Host, at: number, outlook: boolean, ctx?: PlanContext
           ? "am Abend"
           : "in der Nacht";
   const sponsor = sponsorFor("wetter");
-  // Echter Zwei-/Dreitagesausblick statt immer nur "morgen bleibt es ähnlich" – mit leichter
-  // Schwankung pro Tag, damit sich die Werte über die Woche nicht alle gleich anhören.
+  // Echter Zwei-/Dreitagesausblick aus den echten Tageswerten, wenn vorhanden – sonst wie bisher
+  // eine plausible Schätzung mit leichter Schwankung pro Tag.
   const outlookText = outlook
     ? (() => {
-        const day2 = high + (((date + 1) % 5) - 2);
-        const day3 = high + (((date + 2) % 5) - 2);
+        const day2 = w?.daily[1]?.max ?? high + (((date + 1) % 5) - 2);
+        const day3 = w?.daily[2]?.max ?? high + (((date + 2) % 5) - 2);
         const trend = pick(
           [
             `Morgen wird es mit rund ${day2} Grad ähnlich, übermorgen dann ${day3 > day2 ? "etwas wärmer" : "etwas kühler"} bei ${day3} Grad.`,
@@ -636,7 +674,7 @@ function weatherText(host: Host, at: number, outlook: boolean, ctx?: PlanContext
     : " Morgen bleibt es bei ähnlichen Werten.";
   const listenerLine = ctx ? weatherListenerLine(ctx) : "";
   return clean(
-    `${sponsor ? `Das Wetter auf Welle Südwest, präsentiert von ${sponsor.name}. ` : "Das Wetter auf Welle Südwest. "}Im Saarland und in Rheinland-Pfalz ${teil} ${sky}. Die Höchstwerte liegen bei ${high} Grad, im Saartal bis ${high + 1} Grad, in den Höhenlagen von Hunsrück, Eifel und Pfälzerwald nur um ${high - 3} Grad. Dazu ${wind}. In der Nacht kühlt es auf ${low} Grad ab.${outlookText}${listenerLine} ${host.name} wünscht Ihnen einen guten Verlauf.`,
+    `${sponsor ? `Das Wetter auf Welle Südwest, präsentiert von ${sponsor.name}. ` : "Das Wetter auf Welle Südwest. "}Im Saarland und in Rheinland-Pfalz ${teil} ${sky}. Die Höchstwerte liegen bei ${high} Grad, im Saartal bis ${high + 1} Grad, in den Höhenlagen von Hunsrück, Eifel und Pfälzerwald nur um ${high - heightDrop} Grad. Dazu ${wind}. In der Nacht kühlt es auf ${low} Grad ab.${outlookText}${listenerLine} ${host.name} wünscht Ihnen einen guten Verlauf.`,
   );
 }
 
@@ -1024,7 +1062,13 @@ function mediaOf(media: MediaRecord[], kind: MediaRecord["kind"], slot?: MediaRe
   const all = media.filter((m) => m.kind === kind);
   if (!slot) return all;
   const matched = all.filter((m) => m.slot === slot);
-  return matched.length ? matched : all.filter((m) => !m.slot || m.slot === "allgemein");
+  if (slot === "allgemein") return matched.length ? matched : all.filter((m) => !m.slot);
+  // Bei einem spezifischen Slot (z. B. "stundenanfang") NICHT ausschließlich die Treffer liefern,
+  // sondern allgemeine Jingles/Slogans zusätzlich mit reinnehmen: gibt es in der Bibliothek nur
+  // EIN einziges Jingle mit diesem Slot-Tag, würde es sonst bei JEDEM Einsatz dieses Slots
+  // gespielt (nicht nur einmal die Stunde) und wirkt, als liefe es "den ganzen Tag".
+  const general = all.filter((m) => !m.slot || m.slot === "allgemein");
+  return matched.length ? [...matched, ...general] : general;
 }
 
 function adIsActive(m: MediaRecord, at: number) {
@@ -1716,9 +1760,10 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           handoff: true,
         });
       }
-      // Nicht mehr zu jeder vollen Stunde zwingend eine Senderkennung – bei wenig Auswahl in der
-      // Bibliothek wirkte das schnell wie immer dasselbe Jingle im Kreis.
-      if (Math.random() < 0.7) pushJingle();
+      // Kein Jingle mehr direkt vor der vollen Nachrichtenstunde: Werbung und Wetter laufen jetzt
+      // schon gezielt am Ende der vorigen Stunde davor (siehe pushPreNews), ein Jingle dazwischen
+      // würde die gewünschte "Werbung, dann Wetter, dann Nachrichten"-Abfolge wieder aufbrechen.
+      // Jingles laufen weiterhin regelmäßig über die normale Rotation im Lauf der Stunde.
       pushNewsBlock("full", hourStart.getTime());
       if (isShowStart) {
         const opener = `${showTitleWithHost(show, host)}. Vier Stunden ${show.colour} für das Saarland und Rheinland-Pfalz. Heute sprechen wir unter anderem über ${show.topics
@@ -1742,15 +1787,18 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
     }
 
     const halfPast = hourStart.getTime() + 30 * 60_000;
+    // Werbung und Wetter kommen NICHT mehr aus dieser Zufallsrotation – die laufen jetzt gezielt
+    // als feste Werbung-dann-Wetter-Sequenz direkt vor jedem Nachrichtenblock (siehe pushPreNews
+    // unten), sonst gäbe es sie doppelt: einmal zufällig hier, einmal gezielt vor den Nachrichten.
     const rotation = [
       "moderation",
-      "ad",
       "segue",
-      "weather",
-      "ad",
+      "korrespondent",
       "moderation",
       "jingle",
-      "korrespondent",
+      "segue",
+      "moderation",
+      "jingle",
     ] as const;
     let rotationIndex = 0;
 
@@ -1787,10 +1835,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         else if (next === "segue") pushSegue();
         else if (next === "korrespondent") pushCorrespondent();
         else {
-          if (next === "ad") {
-            if (!pushAd()) pushJingle();
-          } else if (next === "weather") pushWeather();
-          else pushJingle();
+          pushJingle();
           if (pendingBlock.length) pushSegue();
         }
         flushBlock();
@@ -1799,9 +1844,25 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       if (cursor < limit) cursor = limit;
     };
 
-    fillUntil(halfPast);
+    // Direkt vor jedem Nachrichtenblock bewusst erst Werbung, dann Wetter, dann die Nachrichten –
+    // vorher landete das nur zufällig in dieser Reihenfolge, je nachdem, wo die normale Rotation
+    // gerade stand. Reserviert dafür einen festen Puffer kurz vor der harten Zeitmarke. Danach NUR
+    // den Cursor auf die exakte Marke springen lassen (kein erneutes fillUntil!) – das würde bei
+    // etwas kürzerer Werbung/Wetter als geschätzt sonst zusätzliche Rotations-Elemente zwischen
+    // Wetter und Nachrichten einschieben und genau die gewünschte Reihenfolge wieder zerstören.
+    const PRE_NEWS_RESERVE_MS = 100_000;
+    const pushPreNews = () => {
+      if (!pushAd()) pushJingle();
+      pushWeather();
+    };
+
+    fillUntil(halfPast - PRE_NEWS_RESERVE_MS);
+    pushPreNews();
+    if (cursor < halfPast) cursor = halfPast;
     pushNewsBlock("short", halfPast);
-    fillUntil(hourEnd);
+    fillUntil(hourEnd - PRE_NEWS_RESERVE_MS);
+    pushPreNews();
+    if (cursor < hourEnd) cursor = hourEnd;
 
     prevShow = show;
     prevHost = host;

@@ -144,11 +144,29 @@ export type LogEntry = {
   message: string;
 };
 
+/** Ein Tag im 3-Tage-Ausblick (siehe fetch-weather.ts). */
+export type DailyWeather = { date: string; max: number; min: number; code: number };
+
+/** Echtes Wetter für Saarland/Rheinland-Pfalz (Open-Meteo, siehe fetch-weather.ts) – ersetzt die
+ *  frühere rein rechnerische Simulation, die sich Tag für Tag identisch anhörte. */
+export type WeatherData = {
+  currentTemp: number;
+  /** WMO-Wettercode – siehe weatherCodeToSky() in fetch-weather.ts für die Textform. */
+  currentCode: number;
+  windSpeedKmh: number;
+  windDirectionDeg: number;
+  elevation: number;
+  daily: DailyWeather[];
+};
+
 export type PlanContext = {
   media: MediaRecord[];
   news: NewsFeedItem[];
   traffic: TrafficFeedItem[];
   reports: Report[];
+  /** Aktuelles echtes Wetter + 3-Tage-Ausblick. Fehlt es (z. B. API kurz nicht erreichbar), fällt
+   *  weatherText() in planner.ts auf die alte, rein rechnerische Schätzung zurück. */
+  weather?: WeatherData | null;
   /** Live-Meldungen der Hörer (Blitzer, Staus, Gefahren) */
   hotline?: HotlineReport[];
   /** Kostenlose, kommerziell nutzbare Musik aus dem Netz */

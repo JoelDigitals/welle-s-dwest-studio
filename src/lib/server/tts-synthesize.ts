@@ -43,6 +43,16 @@ const EDGE_RATE: Record<string, string> = {
   ad: "+5%",
   weather: "-2%",
 };
+/** Lautstärke-Anpassung pro Rubrik: Nachrichten klangen im Vergleich zu Moderation/Werbung
+ *  deutlich leiser (Edge-TTS setzt ohne explizite Angabe die stimmen-eigene Standardlautstärke,
+ *  die je nach Neural-Voice spürbar unterschiedlich ausfällt) – Nachrichten bekommen deshalb
+ *  einen spürbaren Boost, Verkehr/Werbung einen kleineren, damit sich der ganze Sender gleich
+ *  laut anhört statt bei Nachrichten "abzusacken". */
+const EDGE_VOLUME: Record<string, string> = {
+  news: "+35%",
+  traffic: "+15%",
+  ad: "+10%",
+};
 
 /**
  * Microsoft Edge TTS bietet exakt 10 deutsche Neural-Stimmen (geprüft gegen den echten
@@ -121,8 +131,9 @@ async function synthesizeWithEdgeTts(
 ) {
   const voice = EDGE_VOICE_MAP[voiceId] ?? DEFAULT_EDGE_VOICE;
   const rate = EDGE_RATE[style] ?? "+0%";
+  const volume = EDGE_VOLUME[style] ?? "+0%";
   const pitch = (personaId && PERSONA_PITCH[personaId]) || undefined;
-  const tts = new EdgeTTS(text, voice, pitch ? { rate, pitch } : { rate });
+  const tts = new EdgeTTS(text, voice, pitch ? { rate, volume, pitch } : { rate, volume });
   const result = await tts.synthesize();
   return Buffer.from(await result.audio.arrayBuffer());
 }

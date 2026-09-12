@@ -10,7 +10,8 @@ import type {
 import { fetchNews } from "./fetch-news";
 import { fetchTraffic } from "./fetch-traffic";
 import { fetchWarnings } from "./fetch-warnings";
-import type { CivilWarning } from "@/lib/broadcast-types";
+import { fetchWeather } from "./fetch-weather";
+import type { CivilWarning, WeatherData } from "@/lib/broadcast-types";
 import { searchFreeMusic } from "./freemusic-search";
 import { curateFreeMusic, FREE_MUSIC_QUERIES } from "@/lib/free-music-pool";
 import { listHotlineReports, listAnnouncedHotlineIds, markHotlineAnnounced } from "./hotline-store";
@@ -62,6 +63,8 @@ const TRAFFIC_TTL_MS = 3 * 60_000;
 // sein – kürzeres Intervall als Nachrichten/Verkehr, da eine neue Warnung so schnell wie möglich
 // on air soll.
 const WARNINGS_TTL_MS = 2 * 60_000;
+// Echtes Wetter ändert sich langsam – kein Grund, öfter als alle 20 Minuten neu abzufragen.
+const WEATHER_TTL_MS = 20 * 60_000;
 const FREEMUSIC_TTL_MS = 60 * 60_000;
 const MEDIA_TTL_MS = 30_000;
 const SCHEDULED_SHOWS_TTL_MS = 30_000;
@@ -90,6 +93,9 @@ type EngineState = {
   warnings: { items: CivilWarning[]; at: number };
   /** "<id>:<version>"-Schlüssel bereits vorgelesener Warnungen – verhindert Wiederholung. */
   warningsAnnounced: Set<string>;
+  /** Echtes aktuelles Wetter + 3-Tage-Ausblick (Open-Meteo) – null nur, wenn die API gerade
+   *  nicht erreichbar war (dann fällt weatherText() in planner.ts auf die alte Schätzung zurück). */
+  weather: { data: WeatherData | null; at: number };
   freeMusic: { items: FreeTrack[]; at: number };
   media: { items: MediaRecord[]; at: number };
   /** Im Voraus geplante Sendetermine (Datum/Uhrzeit/Titel/Host) – die Engine schaltet zu ihrer
@@ -130,6 +136,7 @@ function getState(): EngineState {
     traffic: { items: [], at: 0 },
     warnings: { items: [], at: 0 },
     warningsAnnounced: new Set(),
+    weather: { data: null, at: 0 },
     freeMusic: { items: [], at: 0 },
     media: { items: [], at: 0 },
     scheduledShows: { items: [], at: 0 },
@@ -249,6 +256,19 @@ async function refreshFeeds(state: EngineState) {
         .catch(() => undefined),
     );
   }
+  if (now - state.weather.at > WEATHER_TTL_MS) {
+    jobs.push(
+      fetchWeather()
+        .then((data) => {
+          // Nur bei einem echten Treffer überschreiben – schlägt der Abruf fehl (data === null),
+          // bleibt das zuletzt bekannte echte Wetter stehen, statt sofort auf die Schätzung
+          // zurückzufallen (kurzer API-Ausfall soll nicht sofort hörbar sein).
+          if (data) state.weather = { data, at: now };
+          else state.weather = { ...state.weather, at: now };
+        })
+        .catch(() => undefined),
+    );
+  }
   if (now - state.media.at > MEDIA_TTL_MS) {
     jobs.push(
       listStoredMedia()
@@ -302,6 +322,7 @@ function buildContext(state: EngineState): PlanContext {
     civilWarnings: state.warnings.items,
     civilWarningsAnnouncedIds: [...state.warningsAnnounced],
     markCivilWarningsAnnounced: (keys) => keys.forEach((k) => state.warningsAnnounced.add(k)),
+    weather: state.weather.data,
     approvalRequired: false,
   };
 }
