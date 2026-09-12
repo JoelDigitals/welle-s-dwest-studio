@@ -39,6 +39,12 @@ function rowToMeta(row: Record<string, unknown>): StoredMediaMeta {
     perHour: row.per_hour == null ? undefined : Number(row.per_hour),
     sponsorOf: (row.sponsor_of ?? null) as MediaRecord["sponsorOf"],
     slot: (row.slot ?? null) as MediaRecord["slot"],
+    scheduleDays: Array.isArray(row.schedule_days)
+      ? (row.schedule_days as unknown[]).map(Number)
+      : undefined,
+    scheduleTimeFrom: row.schedule_time_from == null ? undefined : String(row.schedule_time_from),
+    scheduleTimeUntil:
+      row.schedule_time_until == null ? undefined : String(row.schedule_time_until),
     streamUrl: row.stream_url == null ? undefined : String(row.stream_url),
     license: row.license == null ? undefined : String(row.license),
     source: row.source == null ? undefined : String(row.source),
@@ -60,13 +66,15 @@ async function upsertMeta(meta: StoredMediaMeta): Promise<void> {
   await sql`
     INSERT INTO media_library (
       id, kind, title, artist, category, duration, file_name, mime_type, created_at,
-      run_from, run_until, per_hour, sponsor_of, slot, stream_url, license, source, owner_id
+      run_from, run_until, per_hour, sponsor_of, slot, stream_url, license, source, owner_id,
+      schedule_days, schedule_time_from, schedule_time_until
     ) VALUES (
       ${meta.id}, ${meta.kind}, ${meta.title}, ${meta.artist ?? ""}, ${meta.category ?? ""},
       ${meta.duration ?? 0}, ${meta.fileName ?? ""}, ${meta.mimeType ?? ""}, ${meta.createdAt ?? Date.now()},
       ${meta.runFrom ?? null}, ${meta.runUntil ?? null}, ${meta.perHour ?? null},
       ${meta.sponsorOf ?? null}, ${meta.slot ?? null}, ${meta.streamUrl ?? null},
-      ${meta.license ?? null}, ${meta.source ?? null}, ${meta.ownerId ?? null}
+      ${meta.license ?? null}, ${meta.source ?? null}, ${meta.ownerId ?? null},
+      ${meta.scheduleDays ?? null}, ${meta.scheduleTimeFrom ?? null}, ${meta.scheduleTimeUntil ?? null}
     )
     ON CONFLICT (id) DO UPDATE SET
       kind = EXCLUDED.kind, title = EXCLUDED.title, artist = EXCLUDED.artist,
@@ -74,7 +82,8 @@ async function upsertMeta(meta: StoredMediaMeta): Promise<void> {
       mime_type = EXCLUDED.mime_type, run_from = EXCLUDED.run_from, run_until = EXCLUDED.run_until,
       per_hour = EXCLUDED.per_hour, sponsor_of = EXCLUDED.sponsor_of, slot = EXCLUDED.slot,
       stream_url = EXCLUDED.stream_url, license = EXCLUDED.license, source = EXCLUDED.source,
-      owner_id = EXCLUDED.owner_id
+      owner_id = EXCLUDED.owner_id, schedule_days = EXCLUDED.schedule_days,
+      schedule_time_from = EXCLUDED.schedule_time_from, schedule_time_until = EXCLUDED.schedule_time_until
   `;
 }
 

@@ -34,6 +34,58 @@ const SLOTS: Array<{ id: NonNullable<MediaRecord["slot"]>; label: string }> = [
 /** Jingles/Slogans dürfen wie Werbung einen Zeitraum bekommen (z. B. nur zur Adventszeit oder für
  *  ein bestimmtes Event) - ohne Zeitraum läuft ein Element wie bisher unbegrenzt. */
 const SCHEDULABLE_KINDS: MediaKind[] = ["ad", "jingle", "slogan"];
+/** Zusätzlich dürfen Jingles/Slogans ein WIEDERKEHRENDES Wochentags-/Uhrzeit-Fenster bekommen
+ *  (z. B. nur werktags 6-9 Uhr) - unabhängig vom Datumsbereich oben, jede Woche neu. */
+const RECURRING_SCHEDULABLE_KINDS: MediaKind[] = ["jingle", "slogan"];
+
+const WEEKDAYS: Array<{ value: number; label: string }> = [
+  { value: 1, label: "Mo" },
+  { value: 2, label: "Di" },
+  { value: 3, label: "Mi" },
+  { value: 4, label: "Do" },
+  { value: 5, label: "Fr" },
+  { value: 6, label: "Sa" },
+  { value: 0, label: "So" },
+];
+
+/** Wochentags-Umschalter: leere Auswahl bedeutet "alle Tage", genau wie ein leeres scheduleDays
+ *  serverseitig (mediaIsActive in planner.ts) als "keine Einschränkung" behandelt wird. */
+function WeekdayToggle({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {WEEKDAYS.map((d) => {
+        const active = value.includes(d.value);
+        return (
+          <button
+            key={d.value}
+            type="button"
+            onClick={() =>
+              onChange(active ? value.filter((v) => v !== d.value) : [...value, d.value].sort())
+            }
+            className={`rounded-md border px-2 py-1 text-xs font-medium ${
+              active
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-secondary/40 text-muted-foreground"
+            }`}
+          >
+            {d.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const WEEKDAY_LABEL: Record<number, string> = Object.fromEntries(
+  WEEKDAYS.map((d) => [d.value, d.label]),
+);
+/** Kurzbeschreibung für die Listenansicht, z. B. "Mo–Fr" bei einer zusammenhängenden Auswahl,
+ *  sonst einzeln aufgezählt ("Mo, Mi, Fr"). */
+function weekdaysSummary(days: number[]): string {
+  if (!days.length) return "";
+  const sorted = [...days].sort((a, b) => a - b);
+  return sorted.map((d) => WEEKDAY_LABEL[d]).join(", ");
+}
 
 export function LibraryPanel({
   media,
@@ -58,6 +110,9 @@ export function LibraryPanel({
   const [runFrom, setRunFrom] = useState("");
   const [runUntil, setRunUntil] = useState("");
   const [perHour, setPerHour] = useState("2");
+  const [scheduleDays, setScheduleDays] = useState<number[]>([]);
+  const [scheduleTimeFrom, setScheduleTimeFrom] = useState("");
+  const [scheduleTimeUntil, setScheduleTimeUntil] = useState("");
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("lofi instrumental");
   const [results, setResults] = useState<OnlineTrack[]>([]);
@@ -69,6 +124,7 @@ export function LibraryPanel({
     setBusy(true);
     try {
       const schedulable = SCHEDULABLE_KINDS.includes(kind);
+      const recurring = RECURRING_SCHEDULABLE_KINDS.includes(kind);
       await upload(Array.from(files), {
         kind,
         artist,
@@ -77,9 +133,15 @@ export function LibraryPanel({
         runFrom: schedulable && runFrom ? new Date(runFrom).getTime() : undefined,
         runUntil: schedulable && runUntil ? new Date(runUntil).getTime() : undefined,
         perHour: kind === "ad" ? Number(perHour) || 1 : undefined,
+        scheduleDays: recurring && scheduleDays.length ? scheduleDays : undefined,
+        scheduleTimeFrom: recurring && scheduleTimeFrom ? scheduleTimeFrom : undefined,
+        scheduleTimeUntil: recurring && scheduleTimeUntil ? scheduleTimeUntil : undefined,
       });
       setArtist("");
       setCategory("");
+      setScheduleDays([]);
+      setScheduleTimeFrom("");
+      setScheduleTimeUntil("");
       if (fileRef.current) fileRef.current.value = "";
     } finally {
       setBusy(false);
@@ -179,6 +241,37 @@ export function LibraryPanel({
           </div>
         )}
 
+        {RECURRING_SCHEDULABLE_KINDS.includes(kind) && (
+          <div className="space-y-2 rounded-lg border border-border bg-secondary/20 p-3">
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">
+              Wiederkehrendes Zeitfenster (optional)
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Läuft nur an ausgewählten Wochentagen bzw. Uhrzeiten – leer lassen für keine
+              Einschränkung.
+            </p>
+            <WeekdayToggle value={scheduleDays} onChange={setScheduleDays} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Von</Label>
+                <Input
+                  type="time"
+                  value={scheduleTimeFrom}
+                  onChange={(e) => setScheduleTimeFrom(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Bis</Label>
+                <Input
+                  type="time"
+                  value={scheduleTimeUntil}
+                  onChange={(e) => setScheduleTimeUntil(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <input
           ref={fileRef}
           type="file"
@@ -273,13 +366,20 @@ function MediaRow({
   const [runFrom, setRunFrom] = useState(dateInputValue(m.runFrom));
   const [runUntil, setRunUntil] = useState(dateInputValue(m.runUntil));
   const [perHour, setPerHour] = useState(String(m.perHour ?? 2));
+  const [scheduleDays, setScheduleDays] = useState<number[]>(m.scheduleDays ?? []);
+  const [scheduleTimeFrom, setScheduleTimeFrom] = useState(m.scheduleTimeFrom ?? "");
+  const [scheduleTimeUntil, setScheduleTimeUntil] = useState(m.scheduleTimeUntil ?? "");
   const [saving, setSaving] = useState(false);
+  const recurring = m.kind === "jingle" || m.kind === "slogan";
 
   const startEdit = () => {
     setSlot(m.slot ?? "allgemein");
     setRunFrom(dateInputValue(m.runFrom));
     setRunUntil(dateInputValue(m.runUntil));
     setPerHour(String(m.perHour ?? 2));
+    setScheduleDays(m.scheduleDays ?? []);
+    setScheduleTimeFrom(m.scheduleTimeFrom ?? "");
+    setScheduleTimeUntil(m.scheduleTimeUntil ?? "");
     setEditing(true);
   };
 
@@ -287,10 +387,13 @@ function MediaRow({
     setSaving(true);
     try {
       await update(m.id, {
-        slot: m.kind === "jingle" || m.kind === "slogan" ? slot : m.slot,
+        slot: recurring ? slot : m.slot,
         runFrom: runFrom ? new Date(runFrom).getTime() : undefined,
         runUntil: runUntil ? new Date(runUntil).getTime() : undefined,
         perHour: m.kind === "ad" ? Number(perHour) || 1 : m.perHour,
+        scheduleDays: recurring && scheduleDays.length ? scheduleDays : undefined,
+        scheduleTimeFrom: recurring && scheduleTimeFrom ? scheduleTimeFrom : undefined,
+        scheduleTimeUntil: recurring && scheduleTimeUntil ? scheduleTimeUntil : undefined,
       });
       setEditing(false);
     } finally {
@@ -349,6 +452,28 @@ function MediaRow({
             </div>
           )}
         </div>
+        {recurring && (
+          <div className="space-y-2 rounded-lg border border-border bg-secondary/20 p-2">
+            <Label className="text-xs text-muted-foreground">
+              Wiederkehrendes Zeitfenster (optional)
+            </Label>
+            <WeekdayToggle value={scheduleDays} onChange={setScheduleDays} />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="time"
+                className="h-8 text-xs"
+                value={scheduleTimeFrom}
+                onChange={(e) => setScheduleTimeFrom(e.target.value)}
+              />
+              <Input
+                type="time"
+                className="h-8 text-xs"
+                value={scheduleTimeUntil}
+                onChange={(e) => setScheduleTimeUntil(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
             <X className="size-3.5" /> Abbrechen
@@ -371,6 +496,10 @@ function MediaRow({
           {m.slot && m.slot !== "allgemein" ? ` · ${SLOTS.find((s) => s.id === m.slot)?.label}` : ""}
           {m.runFrom || m.runUntil
             ? ` · ${dateInputValue(m.runFrom) || "…"} – ${dateInputValue(m.runUntil) || "…"}`
+            : ""}
+          {m.scheduleDays?.length ? ` · ${weekdaysSummary(m.scheduleDays)}` : ""}
+          {m.scheduleTimeFrom && m.scheduleTimeUntil
+            ? ` · ${m.scheduleTimeFrom}–${m.scheduleTimeUntil} Uhr`
             : ""}
           {m.streamUrl ? " · Online (CC)" : ""}
         </p>

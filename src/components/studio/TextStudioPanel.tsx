@@ -64,10 +64,18 @@ export function TextStudioPanel(props: Props) {
     .map((n) => `${n.region} (${n.source}): ${n.headline} – ${n.body}`)
     .join("\n");
 
-  const trafficBrief = props.traffic
-    .slice(0, 8)
-    .map((t) => `Verkehr ${t.road} (${t.region}): ${t.message || t.headline}`)
-    .join("\n");
+  // Hörer-Verkehrsmeldungen fehlten hier bisher komplett (nur der offizielle Feed wurde gezeigt
+  // und in den Sprechtext-Entwurf übernommen) - gehören aber genauso dazu wie im tatsächlichen
+  // gesprochenen Verkehrsblock (siehe trafficText in planner.ts, das sie längst einbezieht).
+  const hotlineTrafficReports = props.hotline.filter((h) => h.type === "verkehr").slice(0, 8);
+
+  const trafficBrief = [
+    ...props.traffic.slice(0, 8).map((t) => `Verkehr ${t.road} (${t.region}): ${t.message || t.headline}`),
+    ...hotlineTrafficReports.map(
+      (h) =>
+        `Hörer-Meldung ${h.road || h.place} (${h.region}): ${h.message}`,
+    ),
+  ].join("\n");
 
   const blitzers = props.hotline.filter((h) => h.type === "blitzer").slice(0, 8);
   const blitzerBrief = blitzers
@@ -170,11 +178,13 @@ export function TextStudioPanel(props: Props) {
           )}
         </section>
 
-        {/* RECHTS: Verkehr – Staus/Behinderungen */}
+        {/* RECHTS: Verkehr – Staus/Behinderungen + Hörer-Meldungen */}
         <section className="panel space-y-3 p-5">
           <div className="flex items-center justify-between">
             <h4 className="display text-lg">Verkehr – Staus & Behinderungen</h4>
-            <span className="text-xs text-muted-foreground">{props.traffic.length} Meldungen</span>
+            <span className="text-xs text-muted-foreground">
+              {props.traffic.length + hotlineTrafficReports.length} Meldungen
+            </span>
           </div>
           {props.trafficError && <p className="text-sm text-destructive">{props.trafficError}</p>}
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
@@ -198,7 +208,25 @@ export function TextStudioPanel(props: Props) {
                 )}
               </article>
             ))}
-            {props.traffic.length === 0 && (
+            {hotlineTrafficReports.map((h) => (
+              <article
+                key={h.id}
+                className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-2"
+              >
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  {h.road || h.place} · {h.region}
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary">
+                    Hotline
+                  </span>
+                </p>
+                <p className="text-sm text-foreground/90">{h.message}</p>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                  {clockOf(h.createdAt)}
+                  {h.caller ? ` · ${h.caller}` : ""}
+                </p>
+              </article>
+            ))}
+            {props.traffic.length === 0 && hotlineTrafficReports.length === 0 && (
               <p className="text-sm text-muted-foreground">Keine aktuellen Verkehrsmeldungen.</p>
             )}
           </div>

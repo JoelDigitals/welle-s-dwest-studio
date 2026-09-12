@@ -89,6 +89,12 @@ export async function ensureSchema() {
       owner_id TEXT
     )
   `;
+  // Nachträglich hinzugekommen: wiederkehrendes Wochentags-/Uhrzeit-Zeitfenster für Jingles/
+  // Slogans (z. B. nur werktags 6-9 Uhr), zusätzlich zum bestehenden Datumsbereich (run_from/
+  // run_until) oben.
+  await sql`ALTER TABLE media_library ADD COLUMN IF NOT EXISTS schedule_days INTEGER[]`;
+  await sql`ALTER TABLE media_library ADD COLUMN IF NOT EXISTS schedule_time_from TEXT`;
+  await sql`ALTER TABLE media_library ADD COLUMN IF NOT EXISTS schedule_time_until TEXT`;
   // Zuhörer-Erfassung: jede Zeile ist ein "Stream gestartet"-Ereignis eines Clients (siehe
   // listener-tracking.ts). Dauerhaft in Postgres, damit Auswertungen (z. B. "Hörer heute") einen
   // Render-Redeploy überleben - anders als die gleichzeitige-Hörer-Zählung, die bewusst nur

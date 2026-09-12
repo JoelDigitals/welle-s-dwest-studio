@@ -24,7 +24,14 @@ import type {
 } from "./broadcast-types";
 import { liveSlotAt } from "./studio-store";
 import { exactSection, sectionForPlace } from "./autobahn-exits";
-import { berlinHour, berlinMinute, berlinDate, berlinMonth, berlinClock } from "./berlin-time";
+import {
+  berlinHour,
+  berlinMinute,
+  berlinDate,
+  berlinMonth,
+  berlinClock,
+  berlinWeekday,
+} from "./berlin-time";
 import { weatherCodeToSky } from "./weather-codes";
 
 let counter = 0;
@@ -1139,11 +1146,27 @@ function mediaOf(media: MediaRecord[], kind: MediaRecord["kind"], slot?: MediaRe
 }
 
 /** Gilt für Werbung UND Jingles/Slogans mit gesetztem Zeitraum (runFrom/runUntil) – z. B. ein
- *  Jingle, der nur über die Adventszeit oder ein bestimmtes Event laufen soll. Ohne gesetzten
- *  Zeitraum läuft ein Element wie bisher unbegrenzt. */
+ *  Jingle, der nur über die Adventszeit oder ein bestimmtes Event laufen soll. Zusätzlich dürfen
+ *  Jingles/Slogans ein WIEDERKEHRENDES Wochentags-/Uhrzeit-Fenster haben (z. B. nur werktags
+ *  6-9 Uhr) - unabhängig vom Datumsbereich, jede Woche neu. Jeweils leer/undefiniert = keine
+ *  Einschränkung, läuft wie bisher unbegrenzt. */
 function mediaIsActive(m: MediaRecord, at: number) {
   if (m.runFrom && at < m.runFrom) return false;
   if (m.runUntil && at > m.runUntil) return false;
+  if (m.scheduleDays?.length && !m.scheduleDays.includes(berlinWeekday(at))) return false;
+  if (m.scheduleTimeFrom && m.scheduleTimeUntil) {
+    const [fromH, fromM] = m.scheduleTimeFrom.split(":").map(Number);
+    const [untilH, untilM] = m.scheduleTimeUntil.split(":").map(Number);
+    const fromMin = fromH * 60 + fromM;
+    const untilMin = untilH * 60 + untilM;
+    const nowMin = berlinHour(at) * 60 + berlinMinute(at);
+    // Fenster über Mitternacht hinweg (z. B. 22:00-02:00): "von" liegt dann NACH "bis".
+    const inWindow =
+      fromMin <= untilMin
+        ? nowMin >= fromMin && nowMin < untilMin
+        : nowMin >= fromMin || nowMin < untilMin;
+    if (!inWindow) return false;
+  }
   return true;
 }
 

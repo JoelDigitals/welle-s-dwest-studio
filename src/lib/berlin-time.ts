@@ -50,6 +50,20 @@ export const berlinIsWeekend = (at: number): boolean => {
   return wd === "Sat" || wd === "Sun";
 };
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+/** Wochentag in deutscher Ortszeit, 0=Sonntag..6=Samstag (wie JS Date#getDay) – unabhängig von
+ *  der Server-Zeitzone. Für wiederkehrende Zeitfenster (z. B. Jingle nur werktags), siehe
+ *  mediaIsActive in planner.ts. */
+export const berlinWeekday = (at: number): number => WEEKDAY_INDEX[berlinParts(at).weekday] ?? 0;
+
 /** "HH:MM" in deutscher Ortszeit, unabhängig von der Server-Zeitzone. */
 export const berlinClock = (at: number): string =>
   new Date(at).toLocaleTimeString("de-DE", {

@@ -24,6 +24,13 @@ export type MediaRecord = {
   sponsorOf?: "wetter" | "verkehr" | "nachrichten" | null;
   /** Zuordnung von Jingles/Slogans zu einem Programmplatz */
   slot?: "stundenanfang" | "nachrichten" | "verkehr" | "wetter" | "werbung" | "allgemein" | null;
+  /** Wiederkehrendes Zeitfenster (zusätzlich zum optionalen Datumsbereich runFrom/runUntil oben) -
+   *  an welchen Wochentagen (0=So..6=Sa) und zwischen welchen Uhrzeiten (Berliner Ortszeit, "HH:MM")
+   *  dieses Element laufen darf, z. B. ein Jingle nur werktags von 6 bis 9 Uhr. Jeweils leer/
+   *  undefiniert = keine Einschränkung (läuft wie bisher immer). */
+  scheduleDays?: number[];
+  scheduleTimeFrom?: string;
+  scheduleTimeUntil?: string;
   /** Lokale Datei (Upload) */
   blob?: Blob;
   /** Freie Musik aus dem Netz (Openverse/CC) statt lokaler Datei */

@@ -85,6 +85,9 @@ export type UploadMeta = {
   perHour?: number;
   sponsorOf?: MediaRecord["sponsorOf"];
   slot?: MediaRecord["slot"];
+  scheduleDays?: number[];
+  scheduleTimeFrom?: string;
+  scheduleTimeUntil?: string;
 };
 
 export type OnlineTrack = {
@@ -146,6 +149,9 @@ export function useMediaLibrary() {
           perHour: meta.perHour,
           sponsorOf: meta.sponsorOf ?? null,
           slot: meta.slot ?? null,
+          scheduleDays: meta.scheduleDays,
+          scheduleTimeFrom: meta.scheduleTimeFrom,
+          scheduleTimeUntil: meta.scheduleTimeUntil,
           streamUrl,
         };
         await putMedia(record);
