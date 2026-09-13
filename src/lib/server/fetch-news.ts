@@ -81,6 +81,16 @@ function tag(block: string, name: string) {
   return m ? decode(m[1]) : "";
 }
 
+/** Bild-URL aus <enclosure url="..." type="image/..."> oder <media:content url="..." ...> -
+ *  fast jeder Feed liefert eins mit, bisher ungenutzt. */
+function imageOf(block: string): string | undefined {
+  const enclosure = block.match(/<enclosure\b[^>]*\burl="([^"]+)"[^>]*\btype="image\/[^"]*"/i);
+  if (enclosure) return enclosure[1];
+  const media = block.match(/<media:content\b[^>]*\burl="([^"]+)"/i);
+  if (media) return media[1];
+  return undefined;
+}
+
 function parseRss(xml: string, feed: Feed, limit: number) {
   const items = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   return items.slice(0, limit).map((block, index) => ({
@@ -91,6 +101,7 @@ function parseRss(xml: string, feed: Feed, limit: number) {
     body: tag(block, "description"),
     link: tag(block, "link"),
     publishedAt: tag(block, "pubDate"),
+    imageUrl: imageOf(block),
   }));
 }
 

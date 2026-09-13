@@ -104,6 +104,9 @@ export type NewsFeedItem = {
   body: string;
   link?: string;
   publishedAt?: string;
+  /** Aufmacherbild aus dem Feed (RSS <enclosure>/<media:content>) - für die geschriebenen
+   *  Artikel auf der Nachrichten-Seite, nie für den gesprochenen Text relevant. */
+  imageUrl?: string;
 };
 
 export type TrafficFeedItem = {

@@ -12,6 +12,7 @@ export type PersistedArticle = {
   publishedAt: string | null;
   article: string;
   createdAt: number;
+  imageUrl: string | null;
 };
 
 /** Wie viele Artikel maximal aufgehoben werden (siehe pruneOldArticles) – großzügig genug, dass
@@ -29,6 +30,7 @@ function rowToArticle(row: Record<string, unknown>): PersistedArticle {
     publishedAt: row.published_at == null ? null : String(row.published_at),
     article: String(row.article),
     createdAt: Number(row.created_at),
+    imageUrl: row.image_url == null ? null : String(row.image_url),
   };
 }
 
@@ -55,10 +57,11 @@ export async function ensureArticlesPersisted(items: NewsFeedItem[]): Promise<vo
       const sourceBody = fullText && fullText.length > item.body.length ? fullText : item.body;
       const { article, generated } = await tryWriteNewsArticle(item.headline, sourceBody);
       await sql`
-        INSERT INTO news_articles (id, region, headline, source, link, published_at, article, created_at, ai_generated)
+        INSERT INTO news_articles (id, region, headline, source, link, published_at, article, created_at, ai_generated, image_url)
         VALUES (
           ${item.id}, ${item.region}, ${item.headline}, ${item.source ?? ""},
-          ${item.link ?? null}, ${item.publishedAt ?? null}, ${article}, ${Date.now()}, ${generated}
+          ${item.link ?? null}, ${item.publishedAt ?? null}, ${article}, ${Date.now()}, ${generated},
+          ${item.imageUrl ?? null}
         )
         ON CONFLICT (id) DO NOTHING
       `;

@@ -114,6 +114,8 @@ export function LibraryPanel({
   const [scheduleTimeFrom, setScheduleTimeFrom] = useState("");
   const [scheduleTimeUntil, setScheduleTimeUntil] = useState("");
   const [busy, setBusy] = useState(false);
+  const [libraryFilter, setLibraryFilter] = useState("");
+  const [libraryKindFilter, setLibraryKindFilter] = useState<MediaKind | "alle">("alle");
   const [query, setQuery] = useState("lofi instrumental");
   const [results, setResults] = useState<OnlineTrack[]>([]);
   const [searching, setSearching] = useState(false);
@@ -163,6 +165,13 @@ export function LibraryPanel({
       setSearching(false);
     }
   }
+
+  const filterNeedle = libraryFilter.trim().toLowerCase();
+  const filteredMedia = media.filter((m) => {
+    if (libraryKindFilter !== "alle" && m.kind !== libraryKindFilter) return false;
+    if (!filterNeedle) return true;
+    return `${m.title} ${m.artist} ${m.category}`.toLowerCase().includes(filterNeedle);
+  });
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -330,12 +339,44 @@ export function LibraryPanel({
       </section>
 
       <section className="panel space-y-3 p-5">
-        <h3 className="display text-xl">Bibliothek ({media.length})</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="display text-xl">Bibliothek ({filteredMedia.length}/{media.length})</h3>
+        </div>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="Titel, Interpret, Kategorie durchsuchen …"
+              value={libraryFilter}
+              onChange={(e) => setLibraryFilter(e.target.value)}
+            />
+          </div>
+          <Select
+            value={libraryKindFilter}
+            onValueChange={(v) => setLibraryKindFilter(v as MediaKind | "alle")}
+          >
+            <SelectTrigger className="w-48 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="alle">Alle Typen</SelectItem>
+              {KINDS.map((k) => (
+                <SelectItem key={k.id} value={k.id}>
+                  {k.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="max-h-[26rem] space-y-1.5 overflow-y-auto pr-1">
           {media.length === 0 && (
             <p className="text-sm text-muted-foreground">Noch keine Dateien hochgeladen.</p>
           )}
-          {media.map((m) => (
+          {media.length > 0 && filteredMedia.length === 0 && (
+            <p className="text-sm text-muted-foreground">Keine Treffer.</p>
+          )}
+          {filteredMedia.map((m) => (
             <MediaRow key={m.id} media={m} update={update} remove={remove} />
           ))}
         </div>

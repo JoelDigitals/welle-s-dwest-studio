@@ -133,6 +133,9 @@ export async function ensureSchema() {
   // versuchen (siehe upgradeThinArticles in news-articles-store.ts), ohne echte kurze
   // KI-Entscheidungen ("zu diesem Thema gibt es nicht mehr zu sagen") fälschlich zu wiederholen.
   await sql`ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN NOT NULL DEFAULT true`;
+  // Aufmacherbild aus dem Feed (RSS <enclosure>/<media:content>) - für die geschriebene
+  // Nachrichten-Seite, damit Artikel nicht mehr nur aus reinem Text bestehen.
+  await sql`ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS image_url TEXT`;
   // Einmalige Korrektur für Artikel, die VOR Einführung dieser Spalte gespeichert wurden (der
   // Default "true" trifft auf sie nicht zu) - sehr kurze Artikel waren zu dem Zeitpunkt praktisch
   // immer der unveränderte RSS-Rohtext (KI nicht erreichbar), kein bewusst kurz gehaltener

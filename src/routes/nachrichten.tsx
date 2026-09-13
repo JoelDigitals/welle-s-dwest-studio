@@ -29,6 +29,7 @@ type Article = {
   link: string | null;
   publishedAt: string | null;
   article: string;
+  imageUrl: string | null;
 };
 
 type NewsPage = { items: Article[]; page: number; totalPages: number };
@@ -151,6 +152,14 @@ function Nachrichten() {
       <div className="space-y-3">
         {items.map((a) => (
           <article key={a.id} className="panel space-y-2 p-5">
+            {a.imageUrl && (
+              <img
+                src={a.imageUrl}
+                alt=""
+                loading="lazy"
+                className="-mx-5 -mt-5 mb-1 h-48 w-[calc(100%+2.5rem)] rounded-t-lg object-cover"
+              />
+            )}
             <p className="text-xs uppercase tracking-widest text-primary">{a.region}</p>
             <h2 className="display text-xl">{a.headline}</h2>
             <div className="space-y-2 text-sm leading-relaxed text-foreground/90">
@@ -182,28 +191,79 @@ function Nachrichten() {
       </div>
 
       {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
-          >
-            <ChevronLeft className="size-4" /> Neuer
-          </button>
-          <span className="text-xs text-muted-foreground">
-            Seite {page} von {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
-          >
-            Älter <ChevronRight className="size-4" />
-          </button>
-        </div>
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       )}
     </main>
+  );
+}
+
+/** Seiten mit Nummern statt nur Vor/Zurück - bei vielen Seiten mit "…" verkürzt (immer Seite 1,
+ *  Seite "totalPages" und ein kleines Fenster um die aktuelle Seite sichtbar). */
+function pageWindow(page: number, totalPages: number): (number | "…")[] {
+  const pages = new Set([1, totalPages, page, page - 1, page + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev && p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+}) {
+  const go = (p: number) => {
+    onChange(p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
+      <button
+        type="button"
+        disabled={page <= 1}
+        onClick={() => go(page - 1)}
+        className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+      >
+        <ChevronLeft className="size-4" /> Neuer
+      </button>
+      {pageWindow(page, totalPages).map((p, i) =>
+        p === "…" ? (
+          <span key={`gap-${i}`} className="px-1 text-xs text-muted-foreground">
+            …
+          </span>
+        ) : (
+          <button
+            key={p}
+            type="button"
+            onClick={() => go(p)}
+            aria-current={p === page ? "page" : undefined}
+            className={`size-8 rounded-full text-xs font-medium ${
+              p === page
+                ? "bg-primary text-primary-foreground"
+                : "border border-border text-muted-foreground hover:bg-secondary/60"
+            }`}
+          >
+            {p}
+          </button>
+        ),
+      )}
+      <button
+        type="button"
+        disabled={page >= totalPages}
+        onClick={() => go(page + 1)}
+        className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+      >
+        Älter <ChevronRight className="size-4" />
+      </button>
+    </div>
   );
 }
