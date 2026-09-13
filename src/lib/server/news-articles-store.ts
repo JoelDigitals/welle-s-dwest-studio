@@ -1,6 +1,7 @@
 import type { NewsFeedItem } from "@/lib/broadcast-types";
 import { ensureSchema, getDb } from "./db";
 import { tryWriteNewsArticle } from "./moderation-text";
+import { fetchArticleFullText } from "./fetch-article-fulltext";
 
 export type PersistedArticle = {
   id: string;
@@ -46,7 +47,13 @@ export async function ensureArticlesPersisted(items: NewsFeedItem[]): Promise<vo
     try {
       const existing = await sql`SELECT 1 FROM news_articles WHERE id = ${item.id} LIMIT 1`;
       if (existing.length) continue;
-      const { article, generated } = await tryWriteNewsArticle(item.headline, item.body);
+      // Der RSS-Text allein ist meist nur 1-3 Sätze (gegen die echten Feeds geprüft - auch
+      // content:encoded liefert nichts Längeres) - für einen wirklich ausführlichen Artikel den
+      // echten Seitentext über den Original-Link nachladen, wenn möglich. Best-effort: klappt das
+      // nicht (Paywall, Timeout, Seite blockt Bots), bleibt der kurze RSS-Text als Grundlage.
+      const fullText = item.link ? await fetchArticleFullText(item.link) : null;
+      const sourceBody = fullText && fullText.length > item.body.length ? fullText : item.body;
+      const { article, generated } = await tryWriteNewsArticle(item.headline, sourceBody);
       await sql`
         INSERT INTO news_articles (id, region, headline, source, link, published_at, article, created_at, ai_generated)
         VALUES (
@@ -71,7 +78,7 @@ export async function upgradeThinArticles(limit = 5): Promise<void> {
   await ensureSchema();
   const sql = getDb();
   const rows = await sql`
-    SELECT id, headline, article FROM news_articles
+    SELECT id, headline, article, link FROM news_articles
     WHERE ai_generated = false
     ORDER BY created_at DESC
     LIMIT ${limit}
@@ -80,8 +87,11 @@ export async function upgradeThinArticles(limit = 5): Promise<void> {
     const id = String(row.id);
     const headline = String(row.headline);
     const rawBody = String(row.article);
+    const link = row.link == null ? null : String(row.link);
     try {
-      const { article, generated } = await tryWriteNewsArticle(headline, rawBody);
+      const fullText = link ? await fetchArticleFullText(link) : null;
+      const sourceBody = fullText && fullText.length > rawBody.length ? fullText : rawBody;
+      const { article, generated } = await tryWriteNewsArticle(headline, sourceBody);
       if (!generated) continue; // KI immer noch nicht erreichbar - nächster Versuch beim nächsten Zyklus
       await sql`UPDATE news_articles SET article = ${article}, ai_generated = true WHERE id = ${id}`;
     } catch {
