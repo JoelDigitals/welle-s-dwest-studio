@@ -160,7 +160,7 @@ function Verkehr() {
           )}
         </div>
         <div className="space-y-2">
-          {data?.traffic.length === 0 && (
+          {data && data.traffic.length === 0 && data.hotlineTraffic.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Aktuell keine größeren Behinderungen gemeldet.
             </p>
@@ -170,59 +170,45 @@ function Verkehr() {
             Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="h-16 animate-pulse rounded-lg bg-secondary/40" />
             ))}
-          {data?.traffic.map((t) => (
-            <div
-              key={t.id}
-              className={`rounded-lg border p-3 ${
-                t.urgent ? "border-destructive/40 bg-destructive/5" : "border-border bg-secondary/40"
-              }`}
-            >
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <CategoryBadge category={t.category} />
-                <RegionBadge region={t.region} />
-                {t.road && <span className="font-semibold">{t.road}</span>}
-              </div>
-              <p className="mt-1 text-sm font-semibold">{t.headline}</p>
-              {t.message && !t.message.toLowerCase().startsWith(t.headline.toLowerCase().slice(0, 30)) && (
-                <p className="mt-0.5 text-sm text-muted-foreground">{t.message}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel space-y-3 p-5">
-        <h2 className="display flex items-center gap-2 text-xl">
-          <TrafficCone className="size-5 text-primary" /> Aus der Hörer-Hotline
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Verkehrsmeldungen, die uns Hörerinnen und Hörer direkt gemeldet haben – dieselben, die
-          auch im Programm laufen.
-        </p>
-        <div className="space-y-2">
-          {data?.hotlineTraffic.length === 0 && (
-            <p className="text-sm text-muted-foreground">Aktuell keine Hörer-Meldungen.</p>
-          )}
-          {data?.hotlineTraffic.map((h) => (
-            <div
-              key={h.id}
-              className={`rounded-lg border p-3 ${
-                h.urgent ? "border-destructive/40 bg-destructive/5" : "border-border bg-secondary/40"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="flex flex-wrap items-center gap-2">
-                  <CategoryBadge category={h.category} />
-                  <RegionBadge region={h.region} />
-                  {(h.place || h.road) && (
-                    <span className="font-semibold">{h.place || h.road}</span>
+          {/* Offizielle Meldungen und Hörer-Verkehrsmeldungen zusammen in EINER Liste, nach
+              Dringlichkeit sortiert - keine eigene "Hörer-Hotline"-Sektion mehr, sie sollen genauso
+              aussehen und behandelt werden wie die offiziellen Meldungen. */}
+          {data &&
+            [
+              ...data.traffic.map((t) => ({ ...t, kind: "official" as const })),
+              ...data.hotlineTraffic.map((h) => ({ ...h, kind: "hotline" as const })),
+            ]
+              .sort((a, b) => Number(b.urgent) - Number(a.urgent))
+              .map((item) => (
+                <div
+                  key={item.id}
+                  className={`rounded-lg border p-3 ${
+                    item.urgent
+                      ? "border-destructive/40 bg-destructive/5"
+                      : "border-border bg-secondary/40"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <CategoryBadge category={item.category} />
+                    <RegionBadge region={item.region} />
+                    {item.kind === "hotline" && item.place && (
+                      <span className="font-semibold">{item.place}</span>
+                    )}
+                    {item.road && <span className="font-semibold">{item.road}</span>}
+                  </div>
+                  {item.kind === "official" ? (
+                    <>
+                      <p className="mt-1 text-sm font-semibold">{item.headline}</p>
+                      {item.message &&
+                        !item.message.toLowerCase().startsWith(item.headline.toLowerCase().slice(0, 30)) && (
+                          <p className="mt-0.5 text-sm text-muted-foreground">{item.message}</p>
+                        )}
+                    </>
+                  ) : (
+                    item.message && <p className="mt-1 text-sm">{item.message}</p>
                   )}
-                </span>
-                <span>{timeAgo(h.createdAt)}</span>
-              </div>
-              {h.message && <p className="mt-1 text-sm">{h.message}</p>}
-            </div>
-          ))}
+                </div>
+              ))}
         </div>
       </section>
 
@@ -239,12 +225,11 @@ function Verkehr() {
           )}
           {data?.blitzer.map((b) => (
             <div key={b.id} className="rounded-lg border border-border bg-secondary/40 p-3">
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span className="flex flex-wrap items-center gap-2">
                   <RegionBadge region={b.region} />
-                  {(b.place || b.road) && (
-                    <span className="font-semibold">{b.place || b.road}</span>
-                  )}
+                  {b.place && <span className="font-semibold">{b.place}</span>}
+                  {b.road && <span className="font-semibold">{b.road}</span>}
                 </span>
                 <span>{timeAgo(b.createdAt)}</span>
               </div>
