@@ -75,6 +75,21 @@ async function deleteMediaFromServer(id: string) {
   }
 }
 
+/** Metadaten liest die Bibliothek bisher NUR aus der lokalen (Browser-eigenen) IndexedDB - wurde
+ *  etwas in einem anderen Browser/Gerät hochgeladen, blieb es dort unsichtbar, obwohl der Server
+ *  es längst kennt und die Sende-Engine es bereits verwendet ("Station-IDs sind nicht in der
+ *  Bibliothek"). Best-effort: schlägt der Abruf fehl, bleibt die lokale Bibliothek unverändert. */
+async function fetchServerMedia(): Promise<MediaRecord[]> {
+  try {
+    const res = await fetch("/api/media");
+    if (!res.ok) return [];
+    const data = (await res.json()) as MediaRecord[];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 export type UploadMeta = {
   kind: MediaKind;
   title?: string;
@@ -108,7 +123,16 @@ export function useMediaLibrary() {
 
   const refresh = useCallback(async () => {
     try {
-      const list = await listMedia();
+      const [local, server] = await Promise.all([listMedia(), fetchServerMedia()]);
+      // Alles, was der Server kennt, die lokale Kopie aber nicht (z. B. von einem anderen Browser
+      // hochgeladen), lokal übernehmen - der Server ist die geräteübergreifende Quelle, die auch
+      // die Sende-Engine tatsächlich verwendet. Bewusst nur ERGÄNZEND (nichts lokal Vorhandenes
+      // wird entfernt, nur weil der Serverabruf mal leer zurückkommt - sonst könnte ein einzelner
+      // Netzwerkfehler die ganze sichtbare Bibliothek leeren).
+      const localIds = new Set(local.map((m) => m.id));
+      const missing = server.filter((m) => !localIds.has(m.id));
+      if (missing.length) await Promise.all(missing.map((m) => putMedia(m)));
+      const list = missing.length ? await listMedia() : local;
       setMedia(list);
       setError(null);
       // Server-Manifest aus der zuverlässigen Browser-Kopie auffrischen – falls es z. B. durch
