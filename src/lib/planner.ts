@@ -18,6 +18,7 @@ import type {
   CivilWarning,
   FreeTrack,
   HotlineReport,
+  HotlineReportType,
   ItemKind,
   PlanContext,
   PlanItem,
@@ -566,9 +567,30 @@ const HOTLINE_TYPE_LABEL: Record<string, string> = {
 };
 
 /** Frische Live-Meldungen aus der Hörer-Hotline (max. 6 Stunden alt). */
+/** Wie lange eine Hörer-Meldung als "noch aktuell" gilt, je nach Art – ein Blitzer ist meist
+ *  binnen ein, zwei Stunden längst weitergezogen, eine Unfallmeldung kann dagegen durchaus
+ *  4-6 Stunden relevant bleiben (Bergung, Nachwirkungen im Verkehr). Ohne eigenen "Entwarnung"-
+ *  Mechanismus (eine Meldung explizit vorzeitig als erledigt markieren) ist das bewusst nur eine
+ *  Obergrenze - eine echte Entwarnung müsste separat gemeldet/markiert werden. */
+const HOTLINE_FRESHNESS_MS: Partial<Record<HotlineReportType, number>> = {
+  blitzer: 2 * 3600_000,
+  verkehr: 3 * 3600_000,
+  wetter: 3 * 3600_000,
+};
+const ACCIDENT_HOTLINE_FRESHNESS_MS = 6 * 3600_000;
+const DEFAULT_HOTLINE_FRESHNESS_MS = 6 * 3600_000;
+const HOTLINE_ACCIDENT_PATTERN =
+  /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i;
+
 function freshHotline(ctx: PlanContext) {
   const now = Date.now();
-  return (ctx.hotline ?? []).filter((h) => now - h.createdAt < 6 * 3600_000);
+  return (ctx.hotline ?? []).filter((h) => {
+    const isAccident = h.type === "verkehr" && HOTLINE_ACCIDENT_PATTERN.test(h.message ?? "");
+    const window = isAccident
+      ? ACCIDENT_HOTLINE_FRESHNESS_MS
+      : (HOTLINE_FRESHNESS_MS[h.type] ?? DEFAULT_HOTLINE_FRESHNESS_MS);
+    return now - h.createdAt < window;
+  });
 }
 
 /** Häufige, generische Wörter aus dem freien Meldungstext, die NICHT als Orts-Merkmal zählen
