@@ -667,16 +667,23 @@ export function stripExactSpot(text: string): string {
     // Rastanlage Sankt Wendel" schon vorher isoliert entfernt und "auf Höhe" grammatisch kaputt
     // zurücklassen. Die Ortsangabe nach "Höhe" darf mehrere Wörter haben ("Rastanlage Sankt
     // Wendel"), deshalb "*" statt "?" bei der Wiederholung.
+    // WICHTIG: bewusst OHNE "i"-Flag (case-insensitive) - der macht [A-ZÄÖÜ] sonst auch für
+    // Kleinbuchstaben wahr, wodurch die Wiederholung nicht mehr an der nächsten Großschreibung
+    // stoppt, sondern den kompletten Rest des Satzes verschluckt (realer Vorfall: "in Höhe Merzig
+    // läuft aktuell die Unfallaufnahme ..." wurde bis zum Satzende entfernt, übrig blieb nur noch
+    // "Richtung Luxemburg"). Die Verbindungswörter selbst kommen im echten Text ohnehin praktisch
+    // immer klein geschrieben vor (mitten im Satz), "Höhe"/die Ausfahrt-Schlagwörter sind als
+    // deutsche Substantive ohnehin immer großgeschrieben - beides braucht kein "i".
     .replace(
-      /\b(?:auf|bei|in|nahe)\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)*/gi,
+      /\b(?:auf|bei|in|nahe)\s+Höhe\s+(?:von\s+)?[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)*/g,
       "",
     )
-    .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)*/gi, "")
+    .replace(/\bHöhe\s+[A-ZÄÖÜ][\wäöüß.-]*(?:[- ][A-ZÄÖÜ][\wäöüß.-]*)*/g, "")
     // Verbindungswort ("direkt an der", "bei der", "nahe der") gleich MIT entfernen, nicht nur
     // die Ausfahrt/Anschlussstelle selbst – sonst bleibt ein grammatisch kaputtes Fragment übrig
     // ("... direkt an der ,." statt eines sauberen Satzendes).
     .replace(
-      /\b(?:direkt\s+)?(?:an|bei|nahe)\s+(?:der\s+|dem\s+)?(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)*/gi,
+      /\b(?:direkt\s+)?(?:an|bei|nahe)\s+(?:der\s+|dem\s+)?(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|Auffahrt|AK|AD|Autobahnkreuz|Autobahndreieck|Kreuz|Dreieck|Raststätte|Rastanlage|Tunnel|Brücke)\s+[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)*/g,
       "",
     )
     .replace(
