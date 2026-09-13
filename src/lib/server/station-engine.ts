@@ -239,10 +239,10 @@ async function refreshFeeds(state: EngineState) {
           // schreiben + speichern kann mehrere Sekunden dauern) - der Sende-Tick soll darauf
           // nicht warten müssen.
           void ensureArticlesPersisted(ranked).catch(() => undefined);
-          // Kleine Charge älterer, damals fehlgeschlagener ("roh gebliebener") Artikel erneut
-          // versuchen - unabhängig davon, ob die Meldung noch im Live-Feed steht, sonst würden
-          // längst rotierte Meldungen nie wieder einen echten Artikel bekommen.
-          void upgradeThinArticles(5).catch(() => undefined);
+          // Charge älterer, damals fehlgeschlagener ("roh gebliebener") Artikel erneut versuchen -
+          // unabhängig davon, ob die Meldung noch im Live-Feed steht, sonst würden längst
+          // rotierte Meldungen nie wieder einen echten Artikel bekommen.
+          void upgradeThinArticles().catch(() => undefined);
         })
         .catch(() => undefined),
     );

@@ -69,12 +69,15 @@ export async function ensureArticlesPersisted(items: NewsFeedItem[]): Promise<vo
   await pruneOldArticles();
 }
 
-/** Versucht für eine kleine Anzahl Artikel, die beim ersten Mal nur der unveränderte RSS-Rohtext
- *  wurden (KI damals nicht erreichbar, z. B. Freikontingent ausgeschöpft), den echten Artikel
- *  nachträglich zu schreiben – unabhängig davon, ob die Ursprungsmeldung noch im Live-Feed steht
- *  (ensureArticlesPersisted sieht solche längst rotierten Meldungen nie wieder). Bewusst klein
- *  limitiert pro Aufruf, damit ein Rate-Limit nicht sofort wieder alle Versuche verbraucht. */
-export async function upgradeThinArticles(limit = 5): Promise<void> {
+/** Versucht für eine Anzahl Artikel, die beim ersten Mal nur der unveränderte RSS-Rohtext wurden
+ *  (KI damals nicht erreichbar, z. B. Freikontingent ausgeschöpft), den echten Artikel nachträglich
+ *  zu schreiben – unabhängig davon, ob die Ursprungsmeldung noch im Live-Feed steht
+ *  (ensureArticlesPersisted sieht solche längst rotierten Meldungen nie wieder). War zunächst auf
+ *  5 pro Aufruf begrenzt - bei einem großen Rückstau (z. B. nach einer längeren Kontingent-Sperre)
+ *  reichte das nicht annähernd aus, um überhaupt hinterherzukommen (Backlog wuchs schneller nach,
+ *  als er abgebaut wurde). 20 pro Fünf-Minuten-Zyklus ist immer noch klein genug, dass ein
+ *  einzelner Rate-Limit-Treffer nicht sofort alle Versuche eines Zyklus verbraucht. */
+export async function upgradeThinArticles(limit = 20): Promise<void> {
   await ensureSchema();
   const sql = getDb();
   const rows = await sql`
