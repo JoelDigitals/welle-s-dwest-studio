@@ -2,8 +2,11 @@ import postgres from "postgres";
 
 /**
  * Persistente Datenbank für Dinge, die einen Render-Redeploy überleben MÜSSEN
- * (Accounts, geplante Sendetermine) – anders als die globalThis-Stores für
- * Werbebuchungen/Hotline, die absichtlich flüchtig sein dürfen.
+ * (Accounts, geplante Sendetermine, Hörer-Hotline-Meldungen, Medienbibliothek, News) –
+ * anders als z. B. die globalThis-Stores für Werbebuchungen, die absichtlich flüchtig
+ * sein dürfen. Die Hotline lief früher ebenfalls nur über einen globalThis-Store (siehe
+ * hotline-store.ts) – das machte "Blitzer 5 Tage anzeigen" unmöglich, da jeder Redeploy
+ * alle Meldungen löschte. Seitdem auf Postgres migriert.
  * Supabase-Postgres über den Transaction-Pooler (Port 6543) – "prepare: false" ist dafür
  * Pflicht, da pgbouncer im Transaction-Modus keine Prepared Statements über mehrere
  * Anfragen hinweg zulässt.
@@ -141,5 +144,25 @@ export async function ensureSchema() {
   // immer der unveränderte RSS-Rohtext (KI nicht erreichbar), kein bewusst kurz gehaltener
   // KI-Artikel. Betrifft neue, korrekt gekennzeichnete Artikel danach nicht mehr.
   await sql`UPDATE news_articles SET ai_generated = false WHERE ai_generated = true AND length(article) < 300`;
+  // Hörer-Hotline-Meldungen (Verkehr/Blitzer/Wetter/Gruß/...) lagen bisher NUR in einem
+  // flüchtigen globalThis-Array (siehe hotline-store.ts) - gingen bei jedem Render-Redeploy
+  // komplett verloren, und "5 Tage sichtbar bleiben" (Blitzer) war damit technisch unmöglich.
+  // Jetzt dauerhaft in Postgres, wie schon Medienbibliothek/Nachrichtenartikel.
+  await sql`
+    CREATE TABLE IF NOT EXISTS hotline_reports (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      region TEXT NOT NULL,
+      place TEXT NOT NULL DEFAULT '',
+      road TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      caller TEXT NOT NULL DEFAULT '',
+      contact TEXT NOT NULL DEFAULT '',
+      created_at BIGINT NOT NULL
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_hotline_reports_created ON hotline_reports(created_at DESC)
+  `;
   g.__schemaReady = true;
 }

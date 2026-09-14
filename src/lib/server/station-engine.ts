@@ -315,13 +315,13 @@ async function refreshFeeds(state: EngineState) {
   );
 }
 
-function buildContext(state: EngineState): PlanContext {
+async function buildContext(state: EngineState): Promise<PlanContext> {
   return {
     media: state.media.items,
     news: state.news.items,
     traffic: state.traffic.items,
     reports: [],
-    hotline: listHotlineReports(),
+    hotline: await listHotlineReports(),
     freeMusic: state.freeMusic.items,
     adCampaigns: listApprovedAdCampaigns(),
     liveSlots: state.scheduledShows.items,
@@ -583,7 +583,7 @@ function tickScheduledShows(state: EngineState) {
 
 /** Autopilot-spezifisch: harte Zeitmarken vorziehen und den Sendeplan auffüllen. Läuft nie im
  *  Livestudio-Modus – dort gibt es weder Zeitmarken noch automatische Planung. */
-function tickAutopilotPlanning(state: EngineState) {
+async function tickAutopilotPlanning(state: EngineState) {
   const now = Date.now();
   const hardIdx = state.plan.findIndex(
     (i) => i.hardStart && i.hardStart <= now && i.hardStart > now - 90_000,
@@ -598,11 +598,11 @@ function tickAutopilotPlanning(state: EngineState) {
 
   const totalPlanned = state.plan.reduce((sum, i) => sum + i.duration, 0);
   if (state.plan.length === 0) {
-    state.plan = buildPlan({ from: new Date(), hours: REFILL_HOURS, ctx: buildContext(state) });
+    state.plan = buildPlan({ from: new Date(), hours: REFILL_HOURS, ctx: await buildContext(state) });
   } else if (totalPlanned < REFILL_THRESHOLD_SECONDS) {
     const last = state.plan[state.plan.length - 1];
     const from = new Date(last.plannedAt + last.duration * 1000);
-    const more = buildPlan({ from, hours: REFILL_HOURS, ctx: buildContext(state) });
+    const more = buildPlan({ from, hours: REFILL_HOURS, ctx: await buildContext(state) });
     state.plan = [...state.plan, ...more];
   }
 }
@@ -650,7 +650,7 @@ async function tick() {
     tickScheduledShows(state);
 
     if (!state.liveMode) {
-      tickAutopilotPlanning(state);
+      await tickAutopilotPlanning(state);
     }
 
     ensureAudioPreparing(state);

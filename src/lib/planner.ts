@@ -564,6 +564,7 @@ const HOTLINE_TYPE_LABEL: Record<string, string> = {
   musikwunsch: "Musikwunsch",
   lob_kritik: "Lob & Kritik",
   sonstiges: "Sonstiges",
+  entwarnung: "Entwarnung",
 };
 
 /** Frische Live-Meldungen aus der Hörer-Hotline (max. 6 Stunden alt). */
@@ -609,10 +610,12 @@ const LOCATION_STOPWORDS = new Set([
   "zwischen",
 ]);
 
-/** Signifikante Wörter (≥4 Zeichen) aus Ort/Straße – Grundlage für den Dopplungs-Abgleich unten.
- *  Bewusst OHNE die freie Nachricht: die teilt sich zu leicht generisches Vokabular ("Mobiler
- *  Blitzer Richtung ...") zwischen völlig unterschiedlichen Orten, das wäre eine falsche Dopplung. */
-function locationWords(h: HotlineReport): Set<string> {
+/** Signifikante Wörter (≥4 Zeichen) aus Ort/Straße – Grundlage für den Dopplungs-Abgleich unten
+ *  UND für das Erkennen einer "Entwarnung" zur selben Stelle (siehe resolveEntwarnung in
+ *  hotline-store.ts). Bewusst OHNE die freie Nachricht: die teilt sich zu leicht generisches
+ *  Vokabular ("Mobiler Blitzer Richtung ...") zwischen völlig unterschiedlichen Orten, das wäre
+ *  eine falsche Dopplung. */
+export function locationWords(h: HotlineReport): Set<string> {
   const text = `${h.place ?? ""} ${h.road ?? ""}`.toLowerCase();
   return new Set(
     text.split(/[^a-zäöüß0-9]+/).filter((w) => w.length >= 4 && !LOCATION_STOPWORDS.has(w)),
@@ -625,6 +628,16 @@ function locationWords(h: HotlineReport): Set<string> {
  *  Textvergleich erkannt (die Formulierungen unterscheiden sich meist), sondern darüber, ob sich
  *  Ort/Straße/Nachricht ein nennenswertes Wort teilen (z. B. beide nennen "eppelborn"). Neuere
  *  Meldungen gewinnen (aktuellste Formulierung/Uhrzeit bleibt erhalten). */
+/** True, wenn zwei Meldungen sich (vermutlich) auf dieselbe Stelle beziehen - dieselbe Prüfung wie
+ *  dedupeByLocation, aber für genau ein Paar. Für resolveEntwarnung in hotline-store.ts: eine neu
+ *  eingegangene Entwarnung soll genau die Meldungen treffen, die zur selben Stelle gehören. */
+export function sharesLocation(a: HotlineReport, b: HotlineReport): boolean {
+  const wordsA = locationWords(a);
+  const wordsB = locationWords(b);
+  for (const w of wordsA) if (wordsB.has(w)) return true;
+  return false;
+}
+
 export function dedupeByLocation(reports: HotlineReport[]): HotlineReport[] {
   const sorted = [...reports].sort((a, b) => b.createdAt - a.createdAt);
   const kept: HotlineReport[] = [];
@@ -1867,6 +1880,29 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       return true;
     };
 
+    /** Eine Hörer-Entwarnung (z. B. "Blitzer ist weg", "Unfall ist geräumt") – die zugehörigen
+     *  Verkehrs-/Blitzer-Meldungen zur selben Stelle wurden bereits beim Eintreffen aus dem System
+     *  gelöscht (siehe resolveEntwarnung in hotline-store.ts), hier wird nur noch die Entwarnung
+     *  selbst kurz angesagt. Bekommt Vorrang vor den generischen Hörermeldungen (Gruß/Musikwunsch/
+     *  ...), damit eine Korrektur nicht erst nach mehreren anderen Themen drankommt. */
+    const pushEntwarnung = () => {
+      const w = freshHotline(ctx).find(
+        (h) => h.type === "entwarnung" && !hotlineAnnouncedThisPlan.has(h.id),
+      );
+      if (!w) return false;
+      generalIndex++;
+      const ort = w.place || w.road || "der gemeldeten Stelle";
+      speak(
+        "traffic",
+        "Entwarnung",
+        ort,
+        clean(`Kurze Entwarnung aus ${w.region}: bei ${ort} gilt die vorherige Meldung nicht mehr. ${w.message ?? ""}`),
+      );
+      hotlineAnnouncedThisPlan.add(w.id);
+      ctx.markHotlineAnnounced?.([w.id]);
+      return true;
+    };
+
     /** Sonstige Hörer-Hotline-Meldungen (Gruß, Musikwunsch, Lob & Kritik, Sonstiges) – Verkehr/
      *  Blitzer/Wetter laufen weiterhin über die eigenen, bereits bestehenden Blöcke (siehe
      *  listenerLines/blitzerLine/weatherListenerLine). Wird automatisch eingeplant, sobald
@@ -2039,6 +2075,13 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         }
         // Amtliche Warnmeldungen haben Vorrang vor allem anderen – auch vor Hörermeldungen.
         if (pushCivilWarning()) {
+          flushBlock();
+          if (cursor === before) break;
+          continue;
+        }
+        // Eine Entwarnung korrigiert bereits gesendete Verkehrs-/Blitzer-Infos – soll deshalb
+        // schneller raus als die generischen Hörermeldungen, aber hinter amtlichen Warnungen.
+        if (pushEntwarnung()) {
           flushBlock();
           if (cursor === before) break;
           continue;

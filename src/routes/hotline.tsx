@@ -20,6 +20,11 @@ const DESCRIPTION =
 const TYPE_OPTIONS: Array<{ value: string; label: string; needsPlace: boolean }> = [
   { value: "verkehr", label: "Verkehr (Stau, Unfall, Sperrung)", needsPlace: true },
   { value: "blitzer", label: "Blitzer", needsPlace: true },
+  {
+    value: "entwarnung",
+    label: "Entwarnung (Blitzer/Unfall/Stau ist nicht mehr da)",
+    needsPlace: true,
+  },
   { value: "wetter", label: "Wetterbeobachtung", needsPlace: false },
   { value: "gruss", label: "Gruß / Musikwidmung", needsPlace: false },
   { value: "musikwunsch", label: "Musikwunsch", needsPlace: false },

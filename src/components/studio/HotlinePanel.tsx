@@ -15,6 +15,7 @@ const TYPE_LABEL: Record<HotlineReport["type"], string> = {
   musikwunsch: "Musikwunsch",
   lob_kritik: "Lob & Kritik",
   sonstiges: "Sonstiges",
+  entwarnung: "Entwarnung",
 };
 
 function toText(list: HotlineReport[]) {

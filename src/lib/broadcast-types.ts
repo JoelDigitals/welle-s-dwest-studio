@@ -132,9 +132,18 @@ export type Report = {
   createdAt: number;
 };
 
-/** Art einer Hörermeldung – nicht mehr nur Verkehr, sondern alles, was Hörer:innen melden wollen. */
+/** Art einer Hörermeldung – nicht mehr nur Verkehr, sondern alles, was Hörer:innen melden wollen.
+ *  "entwarnung" hebt eine frühere Verkehrs-/Blitzer-Meldung zur selben Stelle vorzeitig auf (z. B.
+ *  "Blitzer ist weg", "Unfall ist geräumt") - siehe resolveEntwarnung in hotline-store.ts. */
 export type HotlineReportType =
-  "verkehr" | "blitzer" | "wetter" | "gruss" | "musikwunsch" | "lob_kritik" | "sonstiges";
+  | "verkehr"
+  | "blitzer"
+  | "wetter"
+  | "gruss"
+  | "musikwunsch"
+  | "lob_kritik"
+  | "sonstiges"
+  | "entwarnung";
 
 /** Live-Meldung aus der Hörer-Hotline. */
 export type HotlineReport = {

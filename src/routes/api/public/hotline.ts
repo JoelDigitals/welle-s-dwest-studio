@@ -12,6 +12,7 @@ const TYPES = [
   "musikwunsch",
   "lob_kritik",
   "sonstiges",
+  "entwarnung",
 ] as const;
 
 const cors = {
@@ -21,8 +22,10 @@ const cors = {
   "Cache-Control": "no-store",
 };
 
-/** Ort/Straße sind nur bei Verkehr und Blitzer Pflicht – bei Gruß, Musikwunsch etc. reicht die Nachricht. */
-const NEEDS_PLACE: readonly HotlineReportType[] = ["verkehr", "blitzer"];
+/** Ort/Straße sind nur bei Verkehr, Blitzer und Entwarnung Pflicht (eine Entwarnung muss die
+ *  Stelle nennen, die sie aufhebt, siehe resolveEntwarnung in hotline-store.ts) – bei Gruß,
+ *  Musikwunsch etc. reicht die Nachricht. */
+const NEEDS_PLACE: readonly HotlineReportType[] = ["verkehr", "blitzer", "entwarnung"];
 
 const schema = z
   .object({
@@ -43,8 +46,10 @@ export const Route = createFileRoute("/api/public/hotline")({
   server: {
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
-      GET: async () =>
-        Response.json({ items: listHotlineReports().slice(0, 50) }, { headers: cors }),
+      GET: async () => {
+        const items = await listHotlineReports();
+        return Response.json({ items: items.slice(0, 50) }, { headers: cors });
+      },
       POST: async ({ request }) => {
         const parsed = schema.safeParse(await request.json().catch(() => null));
         if (!parsed.success) {
@@ -53,7 +58,7 @@ export const Route = createFileRoute("/api/public/hotline")({
             { status: 400, headers: cors },
           );
         }
-        const report = addHotlineReport({
+        const report = await addHotlineReport({
           ...parsed.data,
           id: `h${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           createdAt: Date.now(),
