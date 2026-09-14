@@ -19,6 +19,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as VerkehrRouteImport } from './routes/verkehr'
 import { Route as WerbungRouteImport } from './routes/werbung'
 import { Route as ApiAudioRouteImport } from './routes/api/audio'
+import { Route as ApiDailyThemeRouteImport } from './routes/api/daily-theme'
 import { Route as ApiEngineSkipRouteImport } from './routes/api/engine-skip'
 import { Route as ApiFreemusicRouteImport } from './routes/api/freemusic'
 import { Route as ApiIcecastMetadataRouteImport } from './routes/api/icecast-metadata'
@@ -94,6 +95,11 @@ const WerbungRoute = WerbungRouteImport.update({
 const ApiAudioRoute = ApiAudioRouteImport.update({
   id: '/api/audio',
   path: '/api/audio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDailyThemeRoute = ApiDailyThemeRouteImport.update({
+  id: '/api/daily-theme',
+  path: '/api/daily-theme',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiEngineSkipRoute = ApiEngineSkipRouteImport.update({
@@ -239,6 +245,7 @@ export interface FileRoutesByFullPath {
   '/verkehr': typeof VerkehrRoute
   '/werbung': typeof WerbungRoute
   '/api/audio': typeof ApiAudioRoute
+  '/api/daily-theme': typeof ApiDailyThemeRoute
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
@@ -277,6 +284,7 @@ export interface FileRoutesByTo {
   '/verkehr': typeof VerkehrRoute
   '/werbung': typeof WerbungRoute
   '/api/audio': typeof ApiAudioRoute
+  '/api/daily-theme': typeof ApiDailyThemeRoute
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
@@ -316,6 +324,7 @@ export interface FileRoutesById {
   '/verkehr': typeof VerkehrRoute
   '/werbung': typeof WerbungRoute
   '/api/audio': typeof ApiAudioRoute
+  '/api/daily-theme': typeof ApiDailyThemeRoute
   '/api/engine-skip': typeof ApiEngineSkipRoute
   '/api/freemusic': typeof ApiFreemusicRoute
   '/api/icecast-metadata': typeof ApiIcecastMetadataRoute
@@ -356,6 +365,7 @@ export interface FileRouteTypes {
     | '/verkehr'
     | '/werbung'
     | '/api/audio'
+    | '/api/daily-theme'
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
@@ -394,6 +404,7 @@ export interface FileRouteTypes {
     | '/verkehr'
     | '/werbung'
     | '/api/audio'
+    | '/api/daily-theme'
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
@@ -432,6 +443,7 @@ export interface FileRouteTypes {
     | '/verkehr'
     | '/werbung'
     | '/api/audio'
+    | '/api/daily-theme'
     | '/api/engine-skip'
     | '/api/freemusic'
     | '/api/icecast-metadata'
@@ -471,6 +483,7 @@ export interface RootRouteChildren {
   VerkehrRoute: typeof VerkehrRoute
   WerbungRoute: typeof WerbungRoute
   ApiAudioRoute: typeof ApiAudioRoute
+  ApiDailyThemeRoute: typeof ApiDailyThemeRoute
   ApiEngineSkipRoute: typeof ApiEngineSkipRoute
   ApiFreemusicRoute: typeof ApiFreemusicRoute
   ApiIcecastMetadataRoute: typeof ApiIcecastMetadataRoute
@@ -569,6 +582,13 @@ declare module '@tanstack/react-router' {
       path: '/api/audio'
       fullPath: '/api/audio'
       preLoaderRoute: typeof ApiAudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/daily-theme': {
+      id: '/api/daily-theme'
+      path: '/api/daily-theme'
+      fullPath: '/api/daily-theme'
+      preLoaderRoute: typeof ApiDailyThemeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/engine-skip': {
@@ -767,6 +787,7 @@ const rootRouteChildren: RootRouteChildren = {
   VerkehrRoute: VerkehrRoute,
   WerbungRoute: WerbungRoute,
   ApiAudioRoute: ApiAudioRoute,
+  ApiDailyThemeRoute: ApiDailyThemeRoute,
   ApiEngineSkipRoute: ApiEngineSkipRoute,
   ApiFreemusicRoute: ApiFreemusicRoute,
   ApiIcecastMetadataRoute: ApiIcecastMetadataRoute,

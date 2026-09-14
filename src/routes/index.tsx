@@ -15,6 +15,7 @@ import { NewsroomPanel } from "@/components/studio/NewsroomPanel";
 import { TextStudioPanel } from "@/components/studio/TextStudioPanel";
 import { LibraryPanel } from "@/components/studio/LibraryPanel";
 import { HotlinePanel } from "@/components/studio/HotlinePanel";
+import { DailyThemePanel } from "@/components/studio/DailyThemePanel";
 import { DashboardPanel } from "@/components/studio/DashboardPanel";
 import { OutputPanel } from "@/components/studio/OutputPanel";
 import { ApprovalPanel } from "@/components/studio/ApprovalPanel";
@@ -349,7 +350,8 @@ function Index() {
             />
           </TabsContent>
 
-          <TabsContent value="redaktion" className="mt-4">
+          <TabsContent value="redaktion" className="mt-4 space-y-4">
+            <DailyThemePanel />
             <NewsPanel
               playNow={e.playNow}
               cueNext={e.cueNext}

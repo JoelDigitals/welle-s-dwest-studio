@@ -36,7 +36,7 @@ import { analyzeMp3 } from "./mp3-audio";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
 import { listScheduledShows } from "./scheduled-shows-store";
-import { getTopicForDate, listRecentTopics, recordTopic } from "./show-topics-store";
+import { getTopicForDate, listRecentTopics, recordTopic, setTopicForDate } from "./show-topics-store";
 import { SHOWS } from "@/lib/radio-config";
 import { berlinDateKey } from "@/lib/berlin-time";
 import { CURIOSITY_DAYS } from "@/lib/curiosity-days";
@@ -904,4 +904,27 @@ export function getTrafficSnapshot(): TrafficFeedItem[] {
 /** Aktueller Nachrichten-Snapshot – für die öffentliche News-Seite (siehe /api/public/news-page). */
 export function getNewsSnapshot(): NewsFeedItem[] {
   return getState().news.items;
+}
+
+/** Heutiges Tagesthema je Sendung (id → Thema) – für die Redaktions-Ansicht im Studio. */
+export function getDailyThemes(): Record<string, string> {
+  return getState().dailyThemes.items;
+}
+
+/** Redaktion legt das Tagesthema einer Sendung manuell fest (statt der KI-Auswahl aus den
+ *  Top-Nachrichten, siehe ensureDailyThemes) - z. B. für ein großes lokales Ereignis, das die KI
+ *  mangels Kontingent gerade nicht selbst erkennen kann (siehe Nutzer-Feedback zum SVE-Sieg als
+ *  Tagesthema). Schreibt direkt in den laufenden Engine-Zustand, damit die Änderung SOFORT wirkt -
+ *  ohne das würde der bereits im Speicher zwischengespeicherte Wert (siehe ensureDailyThemes'
+ *  "items[show.id]"-Cache-Check) bis zum nächsten Kalendertag stehen bleiben. */
+export async function setDailyThemeOverride(showId: string, topic: string): Promise<void> {
+  const state = getState();
+  const today = berlinDateKey(Date.now());
+  await setTopicForDate(showId, topic, today);
+  // Nur Themen ANDERER Sendungen vom selben Kalendertag übernehmen - sonst würden bei einem noch
+  // nicht aktualisierten Zustand (state.dailyThemesDate ist noch der Vortag) versehentlich gestrige
+  // Themen unter dem heutigen Datum weiterleben.
+  const carryOver = state.dailyThemesDate === today ? state.dailyThemes.items : {};
+  state.dailyThemesDate = today;
+  state.dailyThemes = { items: { ...carryOver, [showId]: topic }, at: Date.now() };
 }

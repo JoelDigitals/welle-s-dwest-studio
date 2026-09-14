@@ -35,3 +35,16 @@ export async function recordTopic(showId: string, topic: string, date: string): 
     VALUES (${randomUUID()}, ${showId}, ${topic}, ${date}, ${Date.now()})
   `;
 }
+
+/** Redaktionelle Übersteuerung des Tagesthemas (siehe Nutzer-Feedback: "die Redaktion kann das
+ *  Tagesthema auch festlegen") - ersetzt ein evtl. schon vorhandenes Thema desselben Tages/derselben
+ *  Sendung (kein UNIQUE-Constraint auf show_id+used_on, daher erst löschen, dann neu einfügen). */
+export async function setTopicForDate(showId: string, topic: string, date: string): Promise<void> {
+  await ensureSchema();
+  const sql = getDb();
+  await sql`DELETE FROM show_topics WHERE show_id = ${showId} AND used_on = ${date}`;
+  await sql`
+    INSERT INTO show_topics (id, show_id, topic, used_on, created_at)
+    VALUES (${randomUUID()}, ${showId}, ${topic}, ${date}, ${Date.now()})
+  `;
+}
