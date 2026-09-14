@@ -136,7 +136,7 @@ export const weatherExpertFor = (seed: number): Host =>
  *  Meldung aus genau dieser Region beziehen kann statt auf einen beliebigen, austauschbaren Text. */
 export type Correspondent = Host & {
   city: string;
-  region: "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
+  region: "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Europa" | "Welt";
 };
 export const CORRESPONDENTS: Correspondent[] = [
   {
@@ -179,7 +179,13 @@ export const CORRESPONDENTS: Correspondent[] = [
     id: "co5",
     name: "Marc Dubois",
     city: "Brüssel",
-    region: "Welt",
+    // War bisher "Welt" - dieselbe Region wie die USA-Korrespondentin (co2), wodurch pushCorrespondent
+    // in planner.ts zufällig eine:n der beiden auswählen und ihr/ihm dann eine völlig unpassende
+    // Meldung (USA-Story für Brüssel oder umgekehrt) unterschieben konnte (Nutzer-Feedback:
+    // "Außenreporter sollen nur von dem Ort berichten, wo sie sind"). Mit der neuen, inhaltlich
+    // klassifizierten Region "Europa" (siehe fetch-news.ts) bekommt er jetzt eindeutig nur echte
+    // EU-Meldungen zugeordnet.
+    region: "Europa",
     voice: "ballad",
     persona: "EU-Korrespondent, erklärt Brüssel verständlich.",
     humor: "warm",
