@@ -830,7 +830,7 @@ function weatherText(host: Host, at: number, outlook: boolean, ctx?: PlanContext
   const high = w ? w.currentTemp : base + (date % 4) - 1;
   const low = w ? Math.min(w.currentTemp, w.daily[0]?.min ?? w.currentTemp - 6) : Math.max(-6, high - 7);
   const sky = w
-    ? weatherCodeToSky(w.currentCode)
+    ? weatherCodeToSky(w.currentCode, date + hour)
     : pick(
         [
           "wechselnd bewölktem Himmel mit längeren freundlichen Abschnitten",
