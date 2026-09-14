@@ -94,7 +94,13 @@ function imageOf(block: string): string | undefined {
 function parseRss(xml: string, feed: Feed, limit: number) {
   const items = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
   return items.slice(0, limit).map((block, index) => ({
-    id: `${feed.source}-${index}-${tag(block, "guid") || tag(block, "link") || index}`,
+    // WICHTIG: die id darf NICHT von "index" (Position im Feed beim jeweiligen Abruf) abhängen -
+    // dieselbe Meldung rutscht zwischen zwei Abrufen oft an eine andere Position (neuere Meldungen
+    // schieben sich davor), bekäme mit einem index-Präfix also bei JEDEM Refresh eine NEUE id und
+    // würde als "neuer" Artikel erneut gespeichert - der Grund für sehr viele doppelte Artikel zur
+    // selben Meldung. guid/link sind stabil, "index" ist nur der allerletzte Rückfall, falls ein
+    // Feed-Item ausnahmsweise keins von beidem liefert.
+    id: `${feed.source}-${tag(block, "guid") || tag(block, "link") || `idx${index}`}`,
     region: feed.region,
     source: feed.source,
     headline: tag(block, "title"),
