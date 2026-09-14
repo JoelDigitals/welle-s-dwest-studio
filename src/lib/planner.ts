@@ -749,7 +749,10 @@ function blitzerOrtPhrase(place: string, road: string, index: number): string {
  *  Regieanweisung on air ("bewusst nur ungenau ...") – klang wie eine vorgelesene
  *  Redaktionsrichtlinie statt echtem Radio, einfach ganz normal sprechen. */
 export function blitzerLine(ctx: PlanContext) {
-  const list = dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).slice(0, 5);
+  // Ca. 3 Meldungen pro Durchsage, nicht mehr (siehe Nutzer-Feedback "immer so ca 3
+  // Blitzermeldungen melden") - eine lange Aufzählung von 5 Orten hintereinander wirkt im Radio
+  // wie eine abgelesene Liste statt einem kurzen Service-Hinweis.
+  const list = dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).slice(0, 3);
   if (!list.length) return "";
   // Bewusst nur noch eine einfache Ortsliste, keine Region je Meldung und keine zusätzliche
   // Detail-/Nachrichtenzeile mehr – ein Blitzer-Service ist im echten Radio kurz und listenartig
