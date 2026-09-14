@@ -496,7 +496,10 @@ function listenerTrafficLine(h: HotlineReport, index: number): string {
  * relevante Lagen, Wichtiges zuerst, ohne Doppelmeldungen (ein Hörer-Hinweis zur selben Straße und
  * Stelle, die der Feed schon nennt, wird nicht ein zweites Mal vorgelesen).
  */
-export function trafficText(ctx: PlanContext, at: number) {
+/** Nur der eigentliche Meldungstext (Feed + Hörer-Verkehr), ohne eigene Anmoderation/Verabschiedung
+ *  – Grundlage sowohl für den eigenständigen Verkehrsblock (trafficText) als auch für den
+ *  kombinierten Verkehr-und-Blitzer-Block (trafficAndBlitzerText). */
+function trafficBody(ctx: PlanContext, at: number): string {
   const feedRelevant = ctx.traffic
     .filter((t) => {
       const s = `${t.headline} ${t.message}`;
@@ -534,9 +537,14 @@ export function trafficText(ctx: PlanContext, at: number) {
   const lines = hotlineLines.length
     ? [...feedLines, `${pick(LISTENER_LEAD, seed)} ${hotlineLines.join(" ")}`]
     : feedLines;
-  const body = lines.length
+  return lines.length
     ? lines.join(" ")
     : "Auf den Autobahnen im Saarland und in Rheinland-Pfalz läuft der Verkehr zur Zeit störungsfrei. Keine größeren Behinderungen gemeldet.";
+}
+
+export function trafficText(ctx: PlanContext, at: number) {
+  const body = trafficBody(ctx, at);
+  const seed = berlinMinute(at);
   const intro = pick(
     [
       `${spokenTime(at)}, der Verkehr für das Saarland und Rheinland-Pfalz.`,
@@ -748,25 +756,91 @@ function blitzerOrtPhrase(place: string, road: string, index: number): string {
  *  verbotenes Radarwarngerät, nur über Funk statt App. Erklärt das aber NICHT als eigene
  *  Regieanweisung on air ("bewusst nur ungenau ...") – klang wie eine vorgelesene
  *  Redaktionsrichtlinie statt echtem Radio, einfach ganz normal sprechen. */
-export function blitzerLine(ctx: PlanContext) {
-  // Ca. 3 Meldungen pro Durchsage, nicht mehr (siehe Nutzer-Feedback "immer so ca 3
-  // Blitzermeldungen melden") - eine lange Aufzählung von 5 Orten hintereinander wirkt im Radio
-  // wie eine abgelesene Liste statt einem kurzen Service-Hinweis.
+/** Nur die reinen Ortsangaben, ohne Intro/Ansage – Grundlage für blitzerLine (eigenständig) und
+ *  trafficAndBlitzerText (kombiniert mit dem Verkehr). Ca. 3 Meldungen, nicht mehr (siehe
+ *  Nutzer-Feedback "immer so ca 3 Blitzermeldungen melden") - eine lange Aufzählung von 5 Orten
+ *  hintereinander wirkt im Radio wie eine abgelesene Liste statt einem kurzen Service-Hinweis. */
+function blitzerPlaces(ctx: PlanContext): string[] {
   const list = dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).slice(0, 3);
-  if (!list.length) return "";
+  return list.map((h, i) => blitzerOrtPhrase(h.place, h.road, i));
+}
+
+function joinPlaces(places: string[]): string {
+  return places.length > 1
+    ? `${places.slice(0, -1).join(", ")} und ${places[places.length - 1]}`
+    : (places[0] ?? "");
+}
+
+export function blitzerLine(ctx: PlanContext) {
   // Bewusst nur noch eine einfache Ortsliste, keine Region je Meldung und keine zusätzliche
   // Detail-/Nachrichtenzeile mehr – ein Blitzer-Service ist im echten Radio kurz und listenartig
   // ("Blitzer heute unter anderem in X und Y"), die Intro nennt Saarland und Rheinland-Pfalz schon
   // gemeinsam, das muss nicht vor jedem einzelnen Ort wiederholt werden.
-  const places = list.map((h, i) => blitzerOrtPhrase(h.place, h.road, i));
-  const joined =
-    places.length > 1
-      ? `${places.slice(0, -1).join(", ")} und ${places[places.length - 1]}`
-      : places[0];
+  const places = blitzerPlaces(ctx);
+  if (!places.length) return "";
   const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
   return clean(
-    `${intro} Geblitzt wird aktuell gemeldet: ${joined}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`,
+    `${intro} Geblitzt wird aktuell gemeldet: ${joinPlaces(places)}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`,
   );
+}
+
+/** Verkehr und Blitzer als EIN gemeinsamer Programmpunkt statt zwei getrennter Durchsagen (siehe
+ *  Nutzer-Feedback: "Blitzer und Verkehrsservice sind nicht 2 Programmpunkte sondern es ist EIN
+ *  Punkt und soll mal erst die Blitzer, mal erst die Meldung, mal im Wechsel gemeldet werden") -
+ *  eine feste Reihenfolge (immer erst Verkehr, dann Blitzer als eigener Block) klang mit der Zeit
+ *  vorhersehbar und produzierte pro Stunde zwei separate Audiodateien für inhaltlich eng
+ *  verwandte Themen. Reihenfolge/Verzahnung wechselt zufällig zwischen drei Varianten. */
+export function trafficAndBlitzerText(ctx: PlanContext, at: number): string {
+  const tBody = trafficBody(ctx, at);
+  const places = blitzerPlaces(ctx);
+  const seed = berlinMinute(at) + places.length;
+  const intro = pick(
+    [
+      `${spokenTime(at)}, Verkehr und Blitzer für das Saarland und Rheinland-Pfalz.`,
+      `Jetzt der Blick auf die Straßen zwischen Saar, Mosel und Rhein, inklusive Blitzer-Service.`,
+      `Der Verkehrs- und Blitzer-Service auf Welle Südwest, ${spokenTime(at)}.`,
+    ],
+    seed,
+  );
+  const outro = pick(
+    [
+      "Melden Sie uns Staus, Gefahren und Blitzer über unsere Hörer-Hotline. Fahren Sie umsichtig.",
+      "Kommen Sie gut durch – und danke an alle, die uns über die Hotline melden, was los ist.",
+      "Wir halten Sie auf dem Laufenden, sobald sich etwas ändert. Gute Fahrt.",
+    ],
+    seed + 1,
+  );
+  if (!places.length) return clean(`${intro} ${tBody} ${outro}`);
+
+  const disclaimer = "Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.";
+  const order = seed % 3;
+  let body: string;
+  if (order === 0) {
+    // Erst der Verkehr, dann die Blitzer.
+    const connect = pick(
+      ["Und dazu gleich der Blitzer-Service:", "Dazu noch kurz geblitzt wird aktuell:", "Und jetzt noch die gemeldeten Blitzer:"],
+      seed,
+    );
+    body = `${tBody} ${connect} ${joinPlaces(places)}. ${disclaimer}`;
+  } else if (order === 1) {
+    // Erst die Blitzer, dann der Verkehr.
+    const connect = pick(
+      ["Und jetzt der Verkehr:", "Dazu jetzt die Lage auf den Straßen:", "Kommen wir zum Verkehr:"],
+      seed,
+    );
+    body = `Geblitzt wird aktuell gemeldet: ${joinPlaces(places)}. ${disclaimer} ${connect} ${tBody}`;
+  } else {
+    // Im Wechsel: ein Blitzer vorweg als Teaser, der Verkehr dazwischen, der Rest der Blitzer zum
+    // Schluss – wirkt wie ein natürlich verzahnter Programmpunkt statt zwei starrer Blöcke.
+    const [first, ...rest] = places;
+    const teaser = pick(
+      ["Vorab kurz: geblitzt wird aktuell", "Gleich vorweg, geblitzt wird gerade"],
+      seed,
+    );
+    const restLine = rest.length ? ` Außerdem noch geblitzt: ${joinPlaces(rest)}. ${disclaimer}` : ` ${disclaimer}`;
+    body = `${teaser} ${first}. ${tBody}${restLine}`;
+  }
+  return clean(`${intro} ${body} ${outro}`);
 }
 
 /** Anzahl frischer Blitzer-Meldungen – steuert den eigenen Blitzer-Block im Plan. */
@@ -1997,20 +2071,15 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         approved: !approval,
       });
       pushTrenner("Verkehrs-Sweeper");
+      // Verkehr und Blitzer laufen als EIN gemeinsamer Programmpunkt (siehe trafficAndBlitzerText) -
+      // vorher zwei getrennte, immer gleich sortierte Durchsagen/Audiodateien.
       speak(
         "traffic",
-        "Verkehr Saarland & Rheinland-Pfalz",
-        "Regionaler Verkehrsservice",
-        trafficText(ctx, cursor),
+        "Verkehr & Blitzer Saarland und Rheinland-Pfalz",
+        `${blitzerCount(ctx)} Blitzer-Hörermeldungen`,
+        trafficAndBlitzerText(ctx, cursor),
         { sponsor: sponsorFor("verkehr")?.name ?? null },
       );
-      // Gemeldete Blitzer bekommen einen eigenen, immer hörbaren Block.
-      const blitzer = blitzerLine(ctx);
-      if (blitzer) {
-        speak("traffic", "Blitzer-Service", `${blitzerCount(ctx)} Hörermeldungen`, blitzer, {
-          blitzerService: true,
-        });
-      }
       // Wichtige Meldungen werden nicht fest eingeplant, sondern nur spontan
       // eingeblendet, wenn eine neue Gefahrenlage hereinkommt.
       return true;
