@@ -11,7 +11,14 @@ const cors = {
   "Cache-Control": "no-store",
 };
 
-const FRESH_MS = 6 * 3600_000;
+// Wie lange eine Meldung auf der ÖFFENTLICHEN Website sichtbar bleibt - bewusst getrennt von der
+// Gültigkeit im gesprochenen Programm (siehe HOTLINE_FRESHNESS_MS in planner.ts, dort deutlich
+// kürzer, z. B. 2h für Blitzer, weil ein mobiler Blitzer längst weitergezogen ist). Auf der
+// Website hat ein Blitzer aber informativen Wert auch Tage später ("wo wurde zuletzt geblitzt"),
+// deshalb 5 Tage. Verkehr bleibt kürzer sichtbar, sonst wirkt eine Tage alte Stau-Meldung wie eine
+// aktuelle.
+const BLITZER_FRESH_MS = 5 * 24 * 3600_000;
+const VERKEHR_FRESH_MS = 6 * 3600_000;
 
 /**
  * Öffentliche Staus/Blitzer-Übersicht für die Homepage (siehe /verkehr) – dieselben Daten, die
@@ -27,10 +34,16 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
       GET: async () => {
         const traffic = getTrafficSnapshot();
         const now = Date.now();
-        const fresh = listHotlineReports().filter((h) => now - h.createdAt < FRESH_MS);
+        const allHotline = await listHotlineReports();
+        const freshBlitzer = allHotline.filter(
+          (h) => h.type === "blitzer" && now - h.createdAt < BLITZER_FRESH_MS,
+        );
+        const freshVerkehr = allHotline.filter(
+          (h) => h.type === "verkehr" && now - h.createdAt < VERKEHR_FRESH_MS,
+        );
         // Mehrere Anrufe zur selben Stelle (unterschiedlich formuliert) nicht mehrfach zeigen -
         // siehe dedupeByLocation in planner.ts.
-        const blitzer = dedupeByLocation(fresh.filter((h) => h.type === "blitzer")).map((h) => ({
+        const blitzer = dedupeByLocation(freshBlitzer).map((h) => ({
           id: h.id,
           region: h.region,
           place: h.place || null,
@@ -41,7 +54,7 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
         // Hörer-Verkehrsmeldungen (Stau/Unfall/Sperrung) fehlten hier bisher komplett – nur
         // Blitzer wurde gezeigt. Gehören genauso zur Übersicht wie im gesprochenen Verkehrsblock
         // (siehe trafficText in planner.ts, das sie inzwischen auch zuverlässig einbezieht).
-        const hotlineTraffic = dedupeByLocation(fresh.filter((h) => h.type === "verkehr")).map(
+        const hotlineTraffic = dedupeByLocation(freshVerkehr).map(
           (h) => ({
             id: h.id,
             region: h.region,
