@@ -107,6 +107,7 @@ function regionLead(region: string, prevRegion: string | undefined, i: number) {
     return pick(["In Rheinland-Pfalz", "Aus Rheinland-Pfalz", "Rheinland-Pfalz"], i);
   if (region === "Deutschland")
     return pick(["Bundesweit", "Aus Deutschland", "Deutschlandweit"], i);
+  if (region === "Europa") return pick(["Aus Europa", "In Europa", "Auf EU-Ebene"], i);
   return "";
 }
 
@@ -130,6 +131,7 @@ function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
     ...byRegion("Saarland").slice(0, limitPerRegion),
     ...byRegion("Rheinland-Pfalz").slice(0, limitPerRegion),
     ...byRegion("Deutschland").slice(0, limitPerRegion),
+    ...byRegion("Europa").slice(0, limitPerRegion),
     ...byRegion("Welt").slice(0, limitPerRegion),
   ].map((n) => ({ region: n.region, headline: clean(n.headline), body: clean(n.body) }));
   const reports = ctx.reports

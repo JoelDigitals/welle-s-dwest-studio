@@ -19,7 +19,7 @@ export const Route = createFileRoute("/nachrichten")({
   component: Nachrichten,
 });
 
-type Region = "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
+type Region = "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Europa" | "Welt";
 
 type Article = {
   id: string;

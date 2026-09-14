@@ -1,5 +1,5 @@
 /** Wiederverwendbare Nachrichten-Feed-Logik – vom Route-Handler und von der Server-Engine genutzt. */
-type Region = "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
+type Region = "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Europa" | "Welt";
 
 type Feed = { region: Region; url: string; source: string };
 
@@ -91,24 +91,59 @@ function imageOf(block: string): string | undefined {
   return undefined;
 }
 
+/** Regionale Zeitungs-Feeds (SZ, SWR) mischen unter derselben Rubrik oft auch überregionale
+ *  Meldungen (Agenturmeldungen zu Bund/EU/Welt) - "kommt von der SZ" bedeutet deshalb NICHT
+ *  automatisch "ist eine Saarland-Meldung" (siehe Nutzer-Feedback). Der Inhalt entscheidet: nur
+ *  wenn Schlagzeile/Text ein klares Signal für eine ANDERE Region liefern und KEIN Bezug zur
+ *  Heimatregion des Feeds erkennbar ist, wird umklassifiziert - sonst bleibt es bei der
+ *  Feed-Region (die für echte Lokalmeldungen ohne wörtliche Ortsnennung weiterhin die beste
+ *  verfügbare Annahme ist). */
+const SAARLAND_RE =
+  /\bSaarland\b|\bSaarbrücken\b|\bSaarlouis\b|\bNeunkirchen\b|\bVölklingen\b|\bHomburg\b|\bMerzig\b|\bSt\.?\s?Wendel\b|\bSaarpfalz\b|\bSaarwellingen\b|\bDillingen\b|\bsaarländisch/i;
+const RLP_RE =
+  /\bRheinland-Pfalz\b|\bMainz\b|\bTrier\b|\bKoblenz\b|\bKaiserslautern\b|\bLudwigshafen\b|\bWorms\b|\bLandau\b|\bSpeyer\b|\b(?:Vorder|Süd|West)?pfalz\b|\bMosel\b|\bWesterwald\b|\bHunsrück\b|\brheinland-pfälzisch/i;
+const EUROPE_RE =
+  /\bEU\b|\bEU-\w+|\bEuropäische Union\b|\bEuropäischen Union\b|\bBrüssel\b|\bEuropaparlament\b|\bEU-Kommission\b|\bEU-Gipfel\b|\beuropaweit\b|\bEurozone\b|\bStraßburg\b|\bEU-Staaten\b/;
+const GERMANY_RE =
+  /\bBundestag\b|\bBundesregierung\b|\bBundeskanzler\w*\b|\bBund-Länder\b|\bdeutschlandweit\b|\bBundesländer\b|\bBundesrat\b|\bBundesweit\b/;
+
+function classifyRegion(headline: string, body: string, feedRegion: Region): Region {
+  // Die dedizierten tagesschau-Inland/Ausland-Feeds (Region Deutschland/Welt) sind bereits
+  // zuverlässig getrennt - nur die regionalen Zeitungs-Feeds (Saarland/Rheinland-Pfalz) neigen
+  // zum Vermischen und werden deshalb geprüft.
+  if (feedRegion !== "Saarland" && feedRegion !== "Rheinland-Pfalz") return feedRegion;
+  const text = `${headline} ${body}`;
+  const home = feedRegion === "Saarland" ? SAARLAND_RE.test(text) : RLP_RE.test(text);
+  if (home) return feedRegion;
+  if (feedRegion === "Saarland" && RLP_RE.test(text)) return "Rheinland-Pfalz";
+  if (feedRegion === "Rheinland-Pfalz" && SAARLAND_RE.test(text)) return "Saarland";
+  if (EUROPE_RE.test(text) && !GERMANY_RE.test(text)) return "Europa";
+  if (GERMANY_RE.test(text)) return "Deutschland";
+  return feedRegion;
+}
+
 function parseRss(xml: string, feed: Feed, limit: number) {
   const items = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
-  return items.slice(0, limit).map((block, index) => ({
-    // WICHTIG: die id darf NICHT von "index" (Position im Feed beim jeweiligen Abruf) abhängen -
-    // dieselbe Meldung rutscht zwischen zwei Abrufen oft an eine andere Position (neuere Meldungen
-    // schieben sich davor), bekäme mit einem index-Präfix also bei JEDEM Refresh eine NEUE id und
-    // würde als "neuer" Artikel erneut gespeichert - der Grund für sehr viele doppelte Artikel zur
-    // selben Meldung. guid/link sind stabil, "index" ist nur der allerletzte Rückfall, falls ein
-    // Feed-Item ausnahmsweise keins von beidem liefert.
-    id: `${feed.source}-${tag(block, "guid") || tag(block, "link") || `idx${index}`}`,
-    region: feed.region,
-    source: feed.source,
-    headline: tag(block, "title"),
-    body: tag(block, "description"),
-    link: tag(block, "link"),
-    publishedAt: tag(block, "pubDate"),
-    imageUrl: imageOf(block),
-  }));
+  return items.slice(0, limit).map((block, index) => {
+    const headline = tag(block, "title");
+    const body = tag(block, "description");
+    return {
+      // WICHTIG: die id darf NICHT von "index" (Position im Feed beim jeweiligen Abruf) abhängen -
+      // dieselbe Meldung rutscht zwischen zwei Abrufen oft an eine andere Position (neuere Meldungen
+      // schieben sich davor), bekäme mit einem index-Präfix also bei JEDEM Refresh eine NEUE id und
+      // würde als "neuer" Artikel erneut gespeichert - der Grund für sehr viele doppelte Artikel zur
+      // selben Meldung. guid/link sind stabil, "index" ist nur der allerletzte Rückfall, falls ein
+      // Feed-Item ausnahmsweise keins von beidem liefert.
+      id: `${feed.source}-${tag(block, "guid") || tag(block, "link") || `idx${index}`}`,
+      region: classifyRegion(headline, body, feed.region),
+      source: feed.source,
+      headline,
+      body,
+      link: tag(block, "link"),
+      publishedAt: tag(block, "pubDate"),
+      imageUrl: imageOf(block),
+    };
+  });
 }
 
 export type NewsResult = {

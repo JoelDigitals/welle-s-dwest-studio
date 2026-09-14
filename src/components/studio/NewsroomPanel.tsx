@@ -25,11 +25,12 @@ type Props = {
   cueNext: (item: PlanItem) => void;
 };
 
-const REGIONS = ["Saarland", "Rheinland-Pfalz", "Deutschland", "Welt"] as const;
+const REGIONS = ["Saarland", "Rheinland-Pfalz", "Deutschland", "Europa", "Welt"] as const;
 const LABEL: Record<string, string> = {
   Saarland: "Saarland",
   "Rheinland-Pfalz": "Rheinland-Pfalz",
   Deutschland: "Deutschland",
+  Europa: "Europa",
   Welt: "Welt",
 };
 

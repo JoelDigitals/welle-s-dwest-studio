@@ -98,7 +98,7 @@ export type PlanItem = {
 
 export type NewsFeedItem = {
   id: string;
-  region: "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Welt";
+  region: "Saarland" | "Rheinland-Pfalz" | "Deutschland" | "Europa" | "Welt";
   source: string;
   headline: string;
   body: string;
