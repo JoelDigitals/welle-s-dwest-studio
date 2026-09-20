@@ -9,77 +9,47 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as HotlineRouteImport } from './routes/hotline'
-import { Route as LiveStreamRouteImport } from './routes/live-stream'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as NachrichtenRouteImport } from './routes/nachrichten'
-import { Route as PlayerRouteImport } from './routes/player'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as VerkehrRouteImport } from './routes/verkehr'
 import { Route as WerbungRouteImport } from './routes/werbung'
-import { Route as ApiAudioRouteImport } from './routes/api/audio'
-import { Route as ApiDailyThemeRouteImport } from './routes/api/daily-theme'
-import { Route as ApiEngineSkipRouteImport } from './routes/api/engine-skip'
-import { Route as ApiFreemusicRouteImport } from './routes/api/freemusic'
-import { Route as ApiIcecastMetadataRouteImport } from './routes/api/icecast-metadata'
-import { Route as ApiLiveModeRouteImport } from './routes/api/live-mode'
-import { Route as ApiLiveQueueRouteImport } from './routes/api/live-queue'
-import { Route as ApiMediaRouteImport } from './routes/api/media'
-import { Route as ApiMicStreamRouteImport } from './routes/api/mic-stream'
-import { Route as ApiNewsRouteImport } from './routes/api/news'
-import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
-import { Route as ApiScheduledShowsRouteImport } from './routes/api/scheduled-shows'
-import { Route as ApiScriptRouteImport } from './routes/api/script'
-import { Route as ApiStreamhealthRouteImport } from './routes/api/streamhealth'
-import { Route as ApiTrafficRouteImport } from './routes/api/traffic'
+import { Route as VerkehrRouteImport } from './routes/verkehr'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as PlayerRouteImport } from './routes/player'
+import { Route as NachrichtenRouteImport } from './routes/nachrichten'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LiveStreamRouteImport } from './routes/live-stream'
+import { Route as HotlineRouteImport } from './routes/hotline'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTtsRouteImport } from './routes/api/tts'
-import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
-import { Route as ApiAuthLogoutRouteImport } from './routes/api/auth/logout'
-import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
-import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
-import { Route as ApiPublicAdRequestsRouteImport } from './routes/api/public/ad-requests'
-import { Route as ApiPublicHotlineRouteImport } from './routes/api/public/hotline'
-import { Route as ApiPublicListenerEventRouteImport } from './routes/api/public/listener-event'
-import { Route as ApiPublicListenerStatsRouteImport } from './routes/api/public/listener-stats'
-import { Route as ApiPublicNewsPageRouteImport } from './routes/api/public/news-page'
-import { Route as ApiPublicNowplayingRouteImport } from './routes/api/public/nowplaying'
-import { Route as ApiPublicOnairAudioRouteImport } from './routes/api/public/onair-audio'
+import { Route as ApiTrafficRouteImport } from './routes/api/traffic'
+import { Route as ApiStreamhealthRouteImport } from './routes/api/streamhealth'
+import { Route as ApiScriptRouteImport } from './routes/api/script'
+import { Route as ApiScheduledShowsRouteImport } from './routes/api/scheduled-shows'
+import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
+import { Route as ApiNewsRouteImport } from './routes/api/news'
+import { Route as ApiMicStreamRouteImport } from './routes/api/mic-stream'
+import { Route as ApiMediaRouteImport } from './routes/api/media'
+import { Route as ApiLiveQueueRouteImport } from './routes/api/live-queue'
+import { Route as ApiLiveModeRouteImport } from './routes/api/live-mode'
+import { Route as ApiIcecastMetadataRouteImport } from './routes/api/icecast-metadata'
+import { Route as ApiFreemusicRouteImport } from './routes/api/freemusic'
+import { Route as ApiEngineSkipRouteImport } from './routes/api/engine-skip'
+import { Route as ApiDailyThemeRouteImport } from './routes/api/daily-theme'
+import { Route as ApiAudioRouteImport } from './routes/api/audio'
 import { Route as ApiPublicTrafficOverviewRouteImport } from './routes/api/public/traffic-overview'
+import { Route as ApiPublicOnairAudioRouteImport } from './routes/api/public/onair-audio'
+import { Route as ApiPublicNowplayingRouteImport } from './routes/api/public/nowplaying'
+import { Route as ApiPublicNewsPageRouteImport } from './routes/api/public/news-page'
+import { Route as ApiPublicListenerStatsRouteImport } from './routes/api/public/listener-stats'
+import { Route as ApiPublicListenerEventRouteImport } from './routes/api/public/listener-event'
+import { Route as ApiPublicHotlineRouteImport } from './routes/api/public/hotline'
+import { Route as ApiPublicAdRequestsRouteImport } from './routes/api/public/ad-requests'
+import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
+import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
+import { Route as ApiAuthLogoutRouteImport } from './routes/api/auth/logout'
+import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HotlineRoute = HotlineRouteImport.update({
-  id: '/hotline',
-  path: '/hotline',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LiveStreamRoute = LiveStreamRouteImport.update({
-  id: '/live-stream',
-  path: '/live-stream',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NachrichtenRoute = NachrichtenRouteImport.update({
-  id: '/nachrichten',
-  path: '/nachrichten',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PlayerRoute = PlayerRouteImport.update({
-  id: '/player',
-  path: '/player',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
+const WerbungRoute = WerbungRouteImport.update({
+  id: '/werbung',
+  path: '/werbung',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VerkehrRoute = VerkehrRouteImport.update({
@@ -87,84 +57,39 @@ const VerkehrRoute = VerkehrRouteImport.update({
   path: '/verkehr',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WerbungRoute = WerbungRouteImport.update({
-  id: '/werbung',
-  path: '/werbung',
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAudioRoute = ApiAudioRouteImport.update({
-  id: '/api/audio',
-  path: '/api/audio',
+const PlayerRoute = PlayerRouteImport.update({
+  id: '/player',
+  path: '/player',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDailyThemeRoute = ApiDailyThemeRouteImport.update({
-  id: '/api/daily-theme',
-  path: '/api/daily-theme',
+const NachrichtenRoute = NachrichtenRouteImport.update({
+  id: '/nachrichten',
+  path: '/nachrichten',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiEngineSkipRoute = ApiEngineSkipRouteImport.update({
-  id: '/api/engine-skip',
-  path: '/api/engine-skip',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiFreemusicRoute = ApiFreemusicRouteImport.update({
-  id: '/api/freemusic',
-  path: '/api/freemusic',
+const LiveStreamRoute = LiveStreamRouteImport.update({
+  id: '/live-stream',
+  path: '/live-stream',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiIcecastMetadataRoute = ApiIcecastMetadataRouteImport.update({
-  id: '/api/icecast-metadata',
-  path: '/api/icecast-metadata',
+const HotlineRoute = HotlineRouteImport.update({
+  id: '/hotline',
+  path: '/hotline',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiLiveModeRoute = ApiLiveModeRouteImport.update({
-  id: '/api/live-mode',
-  path: '/api/live-mode',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiLiveQueueRoute = ApiLiveQueueRouteImport.update({
-  id: '/api/live-queue',
-  path: '/api/live-queue',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiMediaRoute = ApiMediaRouteImport.update({
-  id: '/api/media',
-  path: '/api/media',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiMicStreamRoute = ApiMicStreamRouteImport.update({
-  id: '/api/mic-stream',
-  path: '/api/mic-stream',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiNewsRoute = ApiNewsRouteImport.update({
-  id: '/api/news',
-  path: '/api/news',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiNewsroomRoute = ApiNewsroomRouteImport.update({
-  id: '/api/newsroom',
-  path: '/api/newsroom',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiScheduledShowsRoute = ApiScheduledShowsRouteImport.update({
-  id: '/api/scheduled-shows',
-  path: '/api/scheduled-shows',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiScriptRoute = ApiScriptRouteImport.update({
-  id: '/api/script',
-  path: '/api/script',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiStreamhealthRoute = ApiStreamhealthRouteImport.update({
-  id: '/api/streamhealth',
-  path: '/api/streamhealth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiTrafficRoute = ApiTrafficRouteImport.update({
-  id: '/api/traffic',
-  path: '/api/traffic',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTtsRoute = ApiTtsRouteImport.update({
@@ -172,59 +97,79 @@ const ApiTtsRoute = ApiTtsRouteImport.update({
   path: '/api/tts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthLoginRoute = ApiAuthLoginRouteImport.update({
-  id: '/api/auth/login',
-  path: '/api/auth/login',
+const ApiTrafficRoute = ApiTrafficRouteImport.update({
+  id: '/api/traffic',
+  path: '/api/traffic',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthLogoutRoute = ApiAuthLogoutRouteImport.update({
-  id: '/api/auth/logout',
-  path: '/api/auth/logout',
+const ApiStreamhealthRoute = ApiStreamhealthRouteImport.update({
+  id: '/api/streamhealth',
+  path: '/api/streamhealth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthMeRoute = ApiAuthMeRouteImport.update({
-  id: '/api/auth/me',
-  path: '/api/auth/me',
+const ApiScriptRoute = ApiScriptRouteImport.update({
+  id: '/api/script',
+  path: '/api/script',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthRegisterRoute = ApiAuthRegisterRouteImport.update({
-  id: '/api/auth/register',
-  path: '/api/auth/register',
+const ApiScheduledShowsRoute = ApiScheduledShowsRouteImport.update({
+  id: '/api/scheduled-shows',
+  path: '/api/scheduled-shows',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicAdRequestsRoute = ApiPublicAdRequestsRouteImport.update({
-  id: '/api/public/ad-requests',
-  path: '/api/public/ad-requests',
+const ApiNewsroomRoute = ApiNewsroomRouteImport.update({
+  id: '/api/newsroom',
+  path: '/api/newsroom',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicHotlineRoute = ApiPublicHotlineRouteImport.update({
-  id: '/api/public/hotline',
-  path: '/api/public/hotline',
+const ApiNewsRoute = ApiNewsRouteImport.update({
+  id: '/api/news',
+  path: '/api/news',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicListenerEventRoute = ApiPublicListenerEventRouteImport.update({
-  id: '/api/public/listener-event',
-  path: '/api/public/listener-event',
+const ApiMicStreamRoute = ApiMicStreamRouteImport.update({
+  id: '/api/mic-stream',
+  path: '/api/mic-stream',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicListenerStatsRoute = ApiPublicListenerStatsRouteImport.update({
-  id: '/api/public/listener-stats',
-  path: '/api/public/listener-stats',
+const ApiMediaRoute = ApiMediaRouteImport.update({
+  id: '/api/media',
+  path: '/api/media',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicNewsPageRoute = ApiPublicNewsPageRouteImport.update({
-  id: '/api/public/news-page',
-  path: '/api/public/news-page',
+const ApiLiveQueueRoute = ApiLiveQueueRouteImport.update({
+  id: '/api/live-queue',
+  path: '/api/live-queue',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicNowplayingRoute = ApiPublicNowplayingRouteImport.update({
-  id: '/api/public/nowplaying',
-  path: '/api/public/nowplaying',
+const ApiLiveModeRoute = ApiLiveModeRouteImport.update({
+  id: '/api/live-mode',
+  path: '/api/live-mode',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicOnairAudioRoute = ApiPublicOnairAudioRouteImport.update({
-  id: '/api/public/onair-audio',
-  path: '/api/public/onair-audio',
+const ApiIcecastMetadataRoute = ApiIcecastMetadataRouteImport.update({
+  id: '/api/icecast-metadata',
+  path: '/api/icecast-metadata',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFreemusicRoute = ApiFreemusicRouteImport.update({
+  id: '/api/freemusic',
+  path: '/api/freemusic',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEngineSkipRoute = ApiEngineSkipRouteImport.update({
+  id: '/api/engine-skip',
+  path: '/api/engine-skip',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDailyThemeRoute = ApiDailyThemeRouteImport.update({
+  id: '/api/daily-theme',
+  path: '/api/daily-theme',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAudioRoute = ApiAudioRouteImport.update({
+  id: '/api/audio',
+  path: '/api/audio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicTrafficOverviewRoute =
@@ -233,6 +178,61 @@ const ApiPublicTrafficOverviewRoute =
     path: '/api/public/traffic-overview',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicOnairAudioRoute = ApiPublicOnairAudioRouteImport.update({
+  id: '/api/public/onair-audio',
+  path: '/api/public/onair-audio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicNowplayingRoute = ApiPublicNowplayingRouteImport.update({
+  id: '/api/public/nowplaying',
+  path: '/api/public/nowplaying',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicNewsPageRoute = ApiPublicNewsPageRouteImport.update({
+  id: '/api/public/news-page',
+  path: '/api/public/news-page',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicListenerStatsRoute = ApiPublicListenerStatsRouteImport.update({
+  id: '/api/public/listener-stats',
+  path: '/api/public/listener-stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicListenerEventRoute = ApiPublicListenerEventRouteImport.update({
+  id: '/api/public/listener-event',
+  path: '/api/public/listener-event',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicHotlineRoute = ApiPublicHotlineRouteImport.update({
+  id: '/api/public/hotline',
+  path: '/api/public/hotline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicAdRequestsRoute = ApiPublicAdRequestsRouteImport.update({
+  id: '/api/public/ad-requests',
+  path: '/api/public/ad-requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthRegisterRoute = ApiAuthRegisterRouteImport.update({
+  id: '/api/auth/register',
+  path: '/api/auth/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthMeRoute = ApiAuthMeRouteImport.update({
+  id: '/api/auth/me',
+  path: '/api/auth/me',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthLogoutRoute = ApiAuthLogoutRouteImport.update({
+  id: '/api/auth/logout',
+  path: '/api/auth/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthLoginRoute = ApiAuthLoginRouteImport.update({
+  id: '/api/auth/login',
+  path: '/api/auth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -514,53 +514,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/hotline': {
-      id: '/hotline'
-      path: '/hotline'
-      fullPath: '/hotline'
-      preLoaderRoute: typeof HotlineRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/live-stream': {
-      id: '/live-stream'
-      path: '/live-stream'
-      fullPath: '/live-stream'
-      preLoaderRoute: typeof LiveStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/nachrichten': {
-      id: '/nachrichten'
-      path: '/nachrichten'
-      fullPath: '/nachrichten'
-      preLoaderRoute: typeof NachrichtenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/player': {
-      id: '/player'
-      path: '/player'
-      fullPath: '/player'
-      preLoaderRoute: typeof PlayerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
+    '/werbung': {
+      id: '/werbung'
+      path: '/werbung'
+      fullPath: '/werbung'
+      preLoaderRoute: typeof WerbungRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/verkehr': {
@@ -570,116 +528,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VerkehrRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/werbung': {
-      id: '/werbung'
-      path: '/werbung'
-      fullPath: '/werbung'
-      preLoaderRoute: typeof WerbungRouteImport
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/audio': {
-      id: '/api/audio'
-      path: '/api/audio'
-      fullPath: '/api/audio'
-      preLoaderRoute: typeof ApiAudioRouteImport
+    '/player': {
+      id: '/player'
+      path: '/player'
+      fullPath: '/player'
+      preLoaderRoute: typeof PlayerRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/daily-theme': {
-      id: '/api/daily-theme'
-      path: '/api/daily-theme'
-      fullPath: '/api/daily-theme'
-      preLoaderRoute: typeof ApiDailyThemeRouteImport
+    '/nachrichten': {
+      id: '/nachrichten'
+      path: '/nachrichten'
+      fullPath: '/nachrichten'
+      preLoaderRoute: typeof NachrichtenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/engine-skip': {
-      id: '/api/engine-skip'
-      path: '/api/engine-skip'
-      fullPath: '/api/engine-skip'
-      preLoaderRoute: typeof ApiEngineSkipRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/freemusic': {
-      id: '/api/freemusic'
-      path: '/api/freemusic'
-      fullPath: '/api/freemusic'
-      preLoaderRoute: typeof ApiFreemusicRouteImport
+    '/live-stream': {
+      id: '/live-stream'
+      path: '/live-stream'
+      fullPath: '/live-stream'
+      preLoaderRoute: typeof LiveStreamRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/icecast-metadata': {
-      id: '/api/icecast-metadata'
-      path: '/api/icecast-metadata'
-      fullPath: '/api/icecast-metadata'
-      preLoaderRoute: typeof ApiIcecastMetadataRouteImport
+    '/hotline': {
+      id: '/hotline'
+      path: '/hotline'
+      fullPath: '/hotline'
+      preLoaderRoute: typeof HotlineRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/live-mode': {
-      id: '/api/live-mode'
-      path: '/api/live-mode'
-      fullPath: '/api/live-mode'
-      preLoaderRoute: typeof ApiLiveModeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/live-queue': {
-      id: '/api/live-queue'
-      path: '/api/live-queue'
-      fullPath: '/api/live-queue'
-      preLoaderRoute: typeof ApiLiveQueueRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/media': {
-      id: '/api/media'
-      path: '/api/media'
-      fullPath: '/api/media'
-      preLoaderRoute: typeof ApiMediaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/mic-stream': {
-      id: '/api/mic-stream'
-      path: '/api/mic-stream'
-      fullPath: '/api/mic-stream'
-      preLoaderRoute: typeof ApiMicStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/news': {
-      id: '/api/news'
-      path: '/api/news'
-      fullPath: '/api/news'
-      preLoaderRoute: typeof ApiNewsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/newsroom': {
-      id: '/api/newsroom'
-      path: '/api/newsroom'
-      fullPath: '/api/newsroom'
-      preLoaderRoute: typeof ApiNewsroomRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/scheduled-shows': {
-      id: '/api/scheduled-shows'
-      path: '/api/scheduled-shows'
-      fullPath: '/api/scheduled-shows'
-      preLoaderRoute: typeof ApiScheduledShowsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/script': {
-      id: '/api/script'
-      path: '/api/script'
-      fullPath: '/api/script'
-      preLoaderRoute: typeof ApiScriptRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/streamhealth': {
-      id: '/api/streamhealth'
-      path: '/api/streamhealth'
-      fullPath: '/api/streamhealth'
-      preLoaderRoute: typeof ApiStreamhealthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/traffic': {
-      id: '/api/traffic'
-      path: '/api/traffic'
-      fullPath: '/api/traffic'
-      preLoaderRoute: typeof ApiTrafficRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/tts': {
@@ -689,74 +584,116 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTtsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/login': {
-      id: '/api/auth/login'
-      path: '/api/auth/login'
-      fullPath: '/api/auth/login'
-      preLoaderRoute: typeof ApiAuthLoginRouteImport
+    '/api/traffic': {
+      id: '/api/traffic'
+      path: '/api/traffic'
+      fullPath: '/api/traffic'
+      preLoaderRoute: typeof ApiTrafficRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/logout': {
-      id: '/api/auth/logout'
-      path: '/api/auth/logout'
-      fullPath: '/api/auth/logout'
-      preLoaderRoute: typeof ApiAuthLogoutRouteImport
+    '/api/streamhealth': {
+      id: '/api/streamhealth'
+      path: '/api/streamhealth'
+      fullPath: '/api/streamhealth'
+      preLoaderRoute: typeof ApiStreamhealthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/me': {
-      id: '/api/auth/me'
-      path: '/api/auth/me'
-      fullPath: '/api/auth/me'
-      preLoaderRoute: typeof ApiAuthMeRouteImport
+    '/api/script': {
+      id: '/api/script'
+      path: '/api/script'
+      fullPath: '/api/script'
+      preLoaderRoute: typeof ApiScriptRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/register': {
-      id: '/api/auth/register'
-      path: '/api/auth/register'
-      fullPath: '/api/auth/register'
-      preLoaderRoute: typeof ApiAuthRegisterRouteImport
+    '/api/scheduled-shows': {
+      id: '/api/scheduled-shows'
+      path: '/api/scheduled-shows'
+      fullPath: '/api/scheduled-shows'
+      preLoaderRoute: typeof ApiScheduledShowsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/ad-requests': {
-      id: '/api/public/ad-requests'
-      path: '/api/public/ad-requests'
-      fullPath: '/api/public/ad-requests'
-      preLoaderRoute: typeof ApiPublicAdRequestsRouteImport
+    '/api/newsroom': {
+      id: '/api/newsroom'
+      path: '/api/newsroom'
+      fullPath: '/api/newsroom'
+      preLoaderRoute: typeof ApiNewsroomRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hotline': {
-      id: '/api/public/hotline'
-      path: '/api/public/hotline'
-      fullPath: '/api/public/hotline'
-      preLoaderRoute: typeof ApiPublicHotlineRouteImport
+    '/api/news': {
+      id: '/api/news'
+      path: '/api/news'
+      fullPath: '/api/news'
+      preLoaderRoute: typeof ApiNewsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/listener-event': {
-      id: '/api/public/listener-event'
-      path: '/api/public/listener-event'
-      fullPath: '/api/public/listener-event'
-      preLoaderRoute: typeof ApiPublicListenerEventRouteImport
+    '/api/mic-stream': {
+      id: '/api/mic-stream'
+      path: '/api/mic-stream'
+      fullPath: '/api/mic-stream'
+      preLoaderRoute: typeof ApiMicStreamRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/listener-stats': {
-      id: '/api/public/listener-stats'
-      path: '/api/public/listener-stats'
-      fullPath: '/api/public/listener-stats'
-      preLoaderRoute: typeof ApiPublicListenerStatsRouteImport
+    '/api/media': {
+      id: '/api/media'
+      path: '/api/media'
+      fullPath: '/api/media'
+      preLoaderRoute: typeof ApiMediaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/news-page': {
-      id: '/api/public/news-page'
-      path: '/api/public/news-page'
-      fullPath: '/api/public/news-page'
-      preLoaderRoute: typeof ApiPublicNewsPageRouteImport
+    '/api/live-queue': {
+      id: '/api/live-queue'
+      path: '/api/live-queue'
+      fullPath: '/api/live-queue'
+      preLoaderRoute: typeof ApiLiveQueueRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/nowplaying': {
-      id: '/api/public/nowplaying'
-      path: '/api/public/nowplaying'
-      fullPath: '/api/public/nowplaying'
-      preLoaderRoute: typeof ApiPublicNowplayingRouteImport
+    '/api/live-mode': {
+      id: '/api/live-mode'
+      path: '/api/live-mode'
+      fullPath: '/api/live-mode'
+      preLoaderRoute: typeof ApiLiveModeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/icecast-metadata': {
+      id: '/api/icecast-metadata'
+      path: '/api/icecast-metadata'
+      fullPath: '/api/icecast-metadata'
+      preLoaderRoute: typeof ApiIcecastMetadataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/freemusic': {
+      id: '/api/freemusic'
+      path: '/api/freemusic'
+      fullPath: '/api/freemusic'
+      preLoaderRoute: typeof ApiFreemusicRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/engine-skip': {
+      id: '/api/engine-skip'
+      path: '/api/engine-skip'
+      fullPath: '/api/engine-skip'
+      preLoaderRoute: typeof ApiEngineSkipRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/daily-theme': {
+      id: '/api/daily-theme'
+      path: '/api/daily-theme'
+      fullPath: '/api/daily-theme'
+      preLoaderRoute: typeof ApiDailyThemeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/audio': {
+      id: '/api/audio'
+      path: '/api/audio'
+      fullPath: '/api/audio'
+      preLoaderRoute: typeof ApiAudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/traffic-overview': {
+      id: '/api/public/traffic-overview'
+      path: '/api/public/traffic-overview'
+      fullPath: '/api/public/traffic-overview'
+      preLoaderRoute: typeof ApiPublicTrafficOverviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/onair-audio': {
@@ -766,11 +703,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicOnairAudioRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/traffic-overview': {
-      id: '/api/public/traffic-overview'
-      path: '/api/public/traffic-overview'
-      fullPath: '/api/public/traffic-overview'
-      preLoaderRoute: typeof ApiPublicTrafficOverviewRouteImport
+    '/api/public/nowplaying': {
+      id: '/api/public/nowplaying'
+      path: '/api/public/nowplaying'
+      fullPath: '/api/public/nowplaying'
+      preLoaderRoute: typeof ApiPublicNowplayingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/news-page': {
+      id: '/api/public/news-page'
+      path: '/api/public/news-page'
+      fullPath: '/api/public/news-page'
+      preLoaderRoute: typeof ApiPublicNewsPageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/listener-stats': {
+      id: '/api/public/listener-stats'
+      path: '/api/public/listener-stats'
+      fullPath: '/api/public/listener-stats'
+      preLoaderRoute: typeof ApiPublicListenerStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/listener-event': {
+      id: '/api/public/listener-event'
+      path: '/api/public/listener-event'
+      fullPath: '/api/public/listener-event'
+      preLoaderRoute: typeof ApiPublicListenerEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hotline': {
+      id: '/api/public/hotline'
+      path: '/api/public/hotline'
+      fullPath: '/api/public/hotline'
+      preLoaderRoute: typeof ApiPublicHotlineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/ad-requests': {
+      id: '/api/public/ad-requests'
+      path: '/api/public/ad-requests'
+      fullPath: '/api/public/ad-requests'
+      preLoaderRoute: typeof ApiPublicAdRequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/register': {
+      id: '/api/auth/register'
+      path: '/api/auth/register'
+      fullPath: '/api/auth/register'
+      preLoaderRoute: typeof ApiAuthRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/me': {
+      id: '/api/auth/me'
+      path: '/api/auth/me'
+      fullPath: '/api/auth/me'
+      preLoaderRoute: typeof ApiAuthMeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/logout': {
+      id: '/api/auth/logout'
+      path: '/api/auth/logout'
+      fullPath: '/api/auth/logout'
+      preLoaderRoute: typeof ApiAuthLogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/login': {
+      id: '/api/auth/login'
+      path: '/api/auth/login'
+      fullPath: '/api/auth/login'
+      preLoaderRoute: typeof ApiAuthLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
