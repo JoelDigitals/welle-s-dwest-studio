@@ -16,12 +16,46 @@ const g = globalThis as unknown as {
   __schemaReady?: boolean;
 };
 
+const isWorkers = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
+// Cloudflare-Workers-Bindings (env) – dort liegt die Hyperdrive-Bindung "HYPERDRIVE" (siehe
+// nitro.config.ts). Über `cloudflare:workers` statt über den fetch-Handler in server.ts, weil die
+// API-Routen (Nitro-Dispatch) an server.ts vorbeilaufen. Variablen-Specifier + @vite-ignore, damit
+// der Import nur auf Workers aufgelöst wird und Node/`vite dev` daran nicht scheitern.
+const workerEnv = isWorkers
+  ? ((await import(/* @vite-ignore */ "cloudflare:" + "workers")) as {
+      env: { HYPERDRIVE?: { connectionString?: string } };
+    }).env
+  : undefined;
+
 export function getDb() {
-  g.__pg ??= postgres(process.env.DATABASE_URL ?? "", {
+  if (!isWorkers) {
+    g.__pg ??= postgres(process.env.DATABASE_URL ?? "", {
+      prepare: false,
+      ssl: "require",
+    });
+    return g.__pg;
+  }
+
+  // Cloudflare Workers: Sockets dürfen nicht über Requests hinweg geteilt werden (I/O-Objekte
+  // gehören zum Request, der sie erzeugt hat) – daher KEIN globaler Client, sondern pro Aufruf
+  // ein neuer, der mit dem Request endet. Kein "ssl: require": workerd prüft Zertifikate strikt,
+  // und der Supabase-Pooler hat eine private CA (SELF_SIGNED_CERT_IN_CHAIN) – direkt verbinden
+  // klappt dort nie. Hyperdrive übernimmt die TLS-Verbindung zu Supabase und das Pooling.
+  const hyperdrive = workerEnv?.HYPERDRIVE?.connectionString;
+  if (hyperdrive) {
+    return postgres(hyperdrive, { max: 1, fetch_types: false });
+  }
+  console.warn(
+    "[db] Keine Hyperdrive-Bindung (HYPERDRIVE) – direkte TLS-Verbindung zu Supabase scheitert " +
+      "auf Cloudflare Workers mit 'Network connection lost'. Siehe nitro.config.ts.",
+  );
+  return postgres(process.env.DATABASE_URL ?? "", {
     prepare: false,
     ssl: "require",
+    max: 1,
+    fetch_types: false,
   });
-  return g.__pg;
 }
 
 export async function ensureSchema() {
