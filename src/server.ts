@@ -52,6 +52,9 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // Auf Workers scheitert der Start oben im Global Scope (Timer verboten) – hier, im
+      // Request-Kontext, klappt er. Auf Node ist das ein No-op (Timer läuft schon).
+      startStationEngine();
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

@@ -741,8 +741,15 @@ export function pushMicAudioChunk(buffer: Buffer) {
 export function startStationEngine() {
   const state = getState();
   if (state.timer) return;
+  try {
+    state.timer = setInterval(() => void tick(), TICK_MS);
+  } catch {
+    // Cloudflare Workers verbieten Timer im Global Scope (= beim Modul-Import, wo die Routen
+    // diese Funktion aufrufen). Kein Fehler: state.timer bleibt null, der nächste Aufruf
+    // innerhalb eines Requests (siehe server.ts) startet die Engine dann regulär.
+    return;
+  }
   console.log("[station-engine] Autonome Sende-Engine gestartet.");
-  state.timer = setInterval(() => void tick(), TICK_MS);
   void tick();
 }
 
