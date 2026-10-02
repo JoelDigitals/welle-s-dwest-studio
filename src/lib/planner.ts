@@ -364,20 +364,25 @@ function policeStatus(raw: string, index: number): string {
   return pick(POLICE_UNKNOWN, index);
 }
 
-/** Allgemeine, bewusst UNGENAUE Ortsangabe für Stau/Baustelle/Sperrung/Blitzer – nie ein exakter
- *  Punkt, aber auch NIE die Formulierung "im Streckenverlauf" (Tabu-Wort, klingt robotisch/nach
- *  Behördendeutsch). Mal ganz ohne Zusatz (nur die Straße reicht schon), mal eine natürliche
- *  Alternative. */
+/** Fallback-Ortsangabe, wenn sich aus der Meldung wirklich kein Anschlussstellen-Abschnitt
+ *  ermitteln lässt (siehe trafficLine) – nie die Formulierung "im Streckenverlauf" (Tabu-Wort,
+ *  klingt robotisch/nach Behördendeutsch). Mal ganz ohne Zusatz (nur die Straße reicht schon),
+ *  mal eine natürliche Alternative. NICHT zu verwechseln mit der bewussten Ungenauigkeit beim
+ *  Blitzer-Service (stripExactSpot) – die hat einen eigenen, rechtlichen Grund (siehe dort) und
+ *  bleibt davon unberührt. */
 const VAGUE_LOCATION = ["", "", "in diesem Bereich", "auf diesem Abschnitt", "auf der gesamten Strecke"];
 function vagueLocation(index: number): string {
   return pick(VAGUE_LOCATION, index);
 }
 
-/** Eine natürlich klingende Verkehrsmeldung im Radiostil. Die Position wird bei normalem Stau/
- *  Baustelle/Sperrung bewusst nur allgemein genannt (siehe vagueLocation), nie punktgenau – genau
- *  wie beim Blitzer-Service (stripExactSpot) soll das keine Navi-genaue Stelle verraten.
- *  Bei einem UNFALL gilt das Gegenteil: Sicherheitsrelevant, deshalb so genau wie möglich (Ausfahrt/
- *  Streckenabschnitt aus der Anschlussstellen-Tabelle) – dazu klar sagen, ob die Polizei vor Ort ist. */
+/** Eine natürlich klingende Verkehrsmeldung im Radiostil. Die Position wird – wie im echten Radio
+ *  üblich ("zwischen Ausfahrt X und Ausfahrt Y") – so genau wie möglich aus der Anschlussstellen-
+ *  Tabelle ermittelt, nicht nur bei Unfällen (Nutzer-Feedback: "es soll die Stelle genannt werden,
+ *  nicht nur 'in der Region' oder 'auf diesem Abschnitt'"). Nur wenn sich daraus wirklich nichts
+ *  gewinnen lässt, weicht der Text auf eine allgemeine Formulierung aus (siehe vagueLocation).
+ *  Das betrifft NICHT den Blitzer-Service (siehe stripExactSpot/blitzerLine) – ein punktgenauer
+ *  Radarwarn-Hinweis im Radio wäre inhaltlich dasselbe wie ein verbotenes Radarwarngerät, deshalb
+ *  bleibt der bewusst ungenau. Bei einem UNFALL zusätzlich klar sagen, ob die Polizei vor Ort ist. */
 function trafficLine(
   item: { road: string; headline: string; message: string; place?: string },
   index: number,
@@ -395,14 +400,13 @@ function trafficLine(
     raw,
   );
   const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
-  const where = isAccident
-    ? exactSection(road, original) ||
-      exactSection(road, raw) ||
-      sectionForPlace(road, item.place ?? "") ||
-      sectionForPlace(road, textPlace) ||
-      betweenOf(raw) ||
-      vagueLocation(index)
-    : vagueLocation(index);
+  const where =
+    exactSection(road, original) ||
+    exactSection(road, raw) ||
+    sectionForPlace(road, item.place ?? "") ||
+    sectionForPlace(road, textPlace) ||
+    betweenOf(raw) ||
+    vagueLocation(index);
   const dir = directionOf(raw);
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);

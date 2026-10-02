@@ -192,6 +192,19 @@ export const AUTOBAHN_EXITS: Record<string, string[]> = {
   ],
 };
 
+/**
+ * Alltagsnamen, unter denen eine Anschlussstelle genauso gebräuchlich ist wie ihr offizieller
+ * Name aus AUTOBAHN_EXITS – z. B. ist AS 142 "Illingen" auf dem Schild selbst als "Ausfahrt
+ * Humes, Uchtelfangen" ausgewiesen (Uchtelfangen ist der direkt an der Anschlussstelle liegende
+ * Ortsteil von Illingen). Verkehrsmeldungen und Hörerhinweise nennen oft den Ortsteil statt des
+ * Anschlussstellen-Namens – ohne diese Zuordnung würde exactSection()/sectionForPlace() das nicht
+ * erkennen und auf die allgemeine vagueLocation() zurückfallen.
+ * Key = offizieller Name wie in AUTOBAHN_EXITS, Value = zusätzliche bekannte Namen.
+ */
+const EXIT_EXTRA_NAMES: Record<string, string[]> = {
+  Illingen: ["Uchtelfangen", "Humes"],
+};
+
 const AUTOBAHN_REGION_EXITS: Record<string, Record<string, string[]>> = {
   Saarland: {
     A1: [
@@ -406,8 +419,16 @@ function endpointLabel(raw: string) {
 }
 
 function explicitSection(text: string) {
+  // WICHTIG: bewusst OHNE "i"-Flag (case-insensitive) – der macht [A-ZÄÖÜ] sonst auch für
+  // Kleinbuchstaben wahr, wodurch die Zeichenklasse nicht mehr zuverlässig "nächstes Wort ist
+  // großgeschrieben, gehört also noch zum Ortsnamen" erkennt und stattdessen auch das nächste
+  // klein geschriebene Wort verschluckt (realer Fall: "zwischen Eppelborn und Illingen gesperrt"
+  // würde als Ortsname "Illingen gesperrt" statt "Illingen" liefern). Dieselbe Ursache wie beim
+  // früheren stripExactSpot()-Bug (siehe dortiger Kommentar). Die AS/Ausfahrt-Schlagwörter und
+  // deutschen Ortsnamen sind als Substantive ohnehin immer großgeschrieben, "zwischen/und/hinter/
+  // nach/vor/bis" kommen im echten Text immer klein vor – beides braucht kein "i".
   const m = text.match(
-    /zwischen\s+(?:(?:\d+(?:[.,]\d+)?)\s*km\s+)?(?:hinter|nach)?\s*((?:(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)\s+)?[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?)\s+und\s+(?:(?:\d+(?:[.,]\d+)?)\s*km\s+)?(?:vor|bis)?\s*((?:(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)\s+)?[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?)/i,
+    /zwischen\s+(?:(?:\d+(?:[.,]\d+)?)\s*km\s+)?(?:hinter|nach)?\s*((?:(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)\s+)?[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?)\s+und\s+(?:(?:\d+(?:[.,]\d+)?)\s*km\s+)?(?:vor|bis)?\s*((?:(?:AS|ASt\.?|Anschlussstelle|Ausfahrt|AK|AD|Kreuz|Dreieck|Autobahnkreuz|Autobahndreieck)\s+)?[A-ZÄÖÜ][\wäöüß./-]*(?:[- ][A-ZÄÖÜ][\wäöüß./-]*)?)/,
   );
   if (!m) return null;
   return `zwischen ${endpointLabel(m[1])} und ${endpointLabel(m[2])}`;
@@ -424,6 +445,7 @@ function roadKey(road: string) {
 function aliases(name: string) {
   const withoutKind = name.replace(/^(Kreuz|Dreieck)\s/i, "");
   const isJunction = /^(Kreuz|Dreieck)\s/i.test(name);
+  const extra = EXIT_EXTRA_NAMES[name] ?? [];
   const values = isJunction
     ? [
         name,
@@ -439,6 +461,10 @@ function aliases(name: string) {
         `Ausfahrt ${name}`,
         `Anschlussstelle ${name}`,
         withoutKind,
+        ...extra,
+        ...extra.map((e) => `AS ${e}`),
+        ...extra.map((e) => `Ausfahrt ${e}`),
+        ...extra.map((e) => `Anschlussstelle ${e}`),
       ];
   return Array.from(new Set(values)).filter((a) => norm(a).length >= 4);
 }
@@ -536,8 +562,8 @@ export function sectionForPlace(road: string, place: string): string | null {
   if (target.length < 4) return null;
   const hits: number[] = [];
   list.forEach((name, i) => {
-    const n = norm(name);
-    if (n.includes(target) || target.includes(n)) hits.push(i);
+    const candidates = [name, ...(EXIT_EXTRA_NAMES[name] ?? [])].map(norm);
+    if (candidates.some((n) => n.includes(target) || target.includes(n))) hits.push(i);
   });
   if (!hits.length) return null;
   let a = Math.min(...hits);
