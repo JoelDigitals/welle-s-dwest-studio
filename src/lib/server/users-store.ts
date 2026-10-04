@@ -58,3 +58,27 @@ export async function createUser(input: {
     createdAt,
   };
 }
+
+export type UserSummary = Omit<UserRecord, "passwordHash">;
+
+export async function listUsers(): Promise<UserSummary[]> {
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql`
+    SELECT id, username, display_name, host_id, created_at FROM users ORDER BY created_at ASC
+  `;
+  return rows.map((r) => {
+    const { passwordHash: _omit, ...rest } = rowToUser({ ...r, password_hash: "" });
+    return rest;
+  });
+}
+
+/** Setzt das Passwort eines Accounts neu – liefert false, wenn es den Nutzernamen nicht gibt. */
+export async function setUserPassword(username: string, passwordHash: string): Promise<boolean> {
+  await ensureSchema();
+  const sql = getDb();
+  const rows = await sql`
+    UPDATE users SET password_hash = ${passwordHash} WHERE username = ${username} RETURNING id
+  `;
+  return rows.length > 0;
+}

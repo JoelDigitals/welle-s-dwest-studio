@@ -22,6 +22,7 @@ import { ApprovalPanel } from "@/components/studio/ApprovalPanel";
 import { StreamHealth } from "@/components/studio/StreamHealth";
 import { AdRequestsPanel } from "@/components/studio/AdRequestsPanel";
 import { StatistikPanel } from "@/components/studio/StatistikPanel";
+import { AccountsPanel } from "@/components/studio/AccountsPanel";
 import { useRadioEngine } from "@/lib/use-radio-engine";
 import { useLiveBroadcast } from "@/lib/use-live-broadcast";
 import { useLiveStudio } from "@/lib/use-live-studio";
@@ -288,6 +289,7 @@ function Index() {
             <TabsTrigger value="monitor">Monitor</TabsTrigger>
             <TabsTrigger value="statistik">Statistik</TabsTrigger>
             <TabsTrigger value="ausgabe">Ausgabe</TabsTrigger>
+            <TabsTrigger value="konten">Konten</TabsTrigger>
           </TabsList>
 
           <TabsContent value="autopilot" className="mt-4 space-y-4">
@@ -447,6 +449,10 @@ function Index() {
 
           <TabsContent value="ausgabe" className="mt-4">
             <OutputPanel current={liveCurrent} />
+          </TabsContent>
+
+          <TabsContent value="konten" className="mt-4">
+            <AccountsPanel />
           </TabsContent>
         </Tabs>
 

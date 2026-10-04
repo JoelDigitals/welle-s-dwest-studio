@@ -35,9 +35,13 @@ const ENGINE_ORIGIN = (
   process.env.ENGINE_ORIGIN ?? "https://welle-sued-west-studio.onrender.com"
 ).replace(/\/+$/, "");
 
-// Alle Routen, die den In-Memory-Zustand der Sende-Engine lesen oder ändern
-// (= alles, was src/lib/server/station-engine.ts importiert).
+// Alle Routen, die den In-Memory-Zustand der Sende-Engine lesen oder ändern (= alles, was
+// src/lib/server/station-engine.ts importiert), plus Routen mit eigenem flüchtigem Speicher, den
+// die Engine mitnutzt (Werbebuchungen, gleichzeitige Hörer) – auf Workers wäre der je Isolate leer.
 const ENGINE_ROUTES = [
+  "/api/public/ad-requests",
+  "/api/public/listener-event",
+  "/api/public/listener-stats",
   "/live-stream",
   "/api/daily-theme",
   "/api/engine-skip",

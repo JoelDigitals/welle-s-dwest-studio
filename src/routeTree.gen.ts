@@ -42,6 +42,7 @@ import { Route as ApiPublicListenerStatsRouteImport } from './routes/api/public/
 import { Route as ApiPublicListenerEventRouteImport } from './routes/api/public/listener-event'
 import { Route as ApiPublicHotlineRouteImport } from './routes/api/public/hotline'
 import { Route as ApiPublicAdRequestsRouteImport } from './routes/api/public/ad-requests'
+import { Route as ApiAuthUsersRouteImport } from './routes/api/auth/users'
 import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
 import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api/auth/logout'
@@ -213,6 +214,11 @@ const ApiPublicAdRequestsRoute = ApiPublicAdRequestsRouteImport.update({
   path: '/api/public/ad-requests',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthUsersRoute = ApiAuthUsersRouteImport.update({
+  id: '/api/auth/users',
+  path: '/api/auth/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthRegisterRoute = ApiAuthRegisterRouteImport.update({
   id: '/api/auth/register',
   path: '/api/auth/register',
@@ -264,6 +270,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/users': typeof ApiAuthUsersRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
   '/api/public/listener-event': typeof ApiPublicListenerEventRoute
@@ -303,6 +310,7 @@ export interface FileRoutesByTo {
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/users': typeof ApiAuthUsersRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
   '/api/public/listener-event': typeof ApiPublicListenerEventRoute
@@ -343,6 +351,7 @@ export interface FileRoutesById {
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/users': typeof ApiAuthUsersRoute
   '/api/public/ad-requests': typeof ApiPublicAdRequestsRoute
   '/api/public/hotline': typeof ApiPublicHotlineRoute
   '/api/public/listener-event': typeof ApiPublicListenerEventRoute
@@ -384,6 +393,7 @@ export interface FileRouteTypes {
     | '/api/auth/logout'
     | '/api/auth/me'
     | '/api/auth/register'
+    | '/api/auth/users'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
     | '/api/public/listener-event'
@@ -423,6 +433,7 @@ export interface FileRouteTypes {
     | '/api/auth/logout'
     | '/api/auth/me'
     | '/api/auth/register'
+    | '/api/auth/users'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
     | '/api/public/listener-event'
@@ -462,6 +473,7 @@ export interface FileRouteTypes {
     | '/api/auth/logout'
     | '/api/auth/me'
     | '/api/auth/register'
+    | '/api/auth/users'
     | '/api/public/ad-requests'
     | '/api/public/hotline'
     | '/api/public/listener-event'
@@ -502,6 +514,7 @@ export interface RootRouteChildren {
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
   ApiAuthMeRoute: typeof ApiAuthMeRoute
   ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
+  ApiAuthUsersRoute: typeof ApiAuthUsersRoute
   ApiPublicAdRequestsRoute: typeof ApiPublicAdRequestsRoute
   ApiPublicHotlineRoute: typeof ApiPublicHotlineRoute
   ApiPublicListenerEventRoute: typeof ApiPublicListenerEventRoute
@@ -745,6 +758,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicAdRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/users': {
+      id: '/api/auth/users'
+      path: '/api/auth/users'
+      fullPath: '/api/auth/users'
+      preLoaderRoute: typeof ApiAuthUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/register': {
       id: '/api/auth/register'
       path: '/api/auth/register'
@@ -806,6 +826,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,
   ApiAuthMeRoute: ApiAuthMeRoute,
   ApiAuthRegisterRoute: ApiAuthRegisterRoute,
+  ApiAuthUsersRoute: ApiAuthUsersRoute,
   ApiPublicAdRequestsRoute: ApiPublicAdRequestsRoute,
   ApiPublicHotlineRoute: ApiPublicHotlineRoute,
   ApiPublicListenerEventRoute: ApiPublicListenerEventRoute,
