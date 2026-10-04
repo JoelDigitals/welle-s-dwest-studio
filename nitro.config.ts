@@ -38,7 +38,13 @@ const ENGINE_ORIGIN = (
 // Alle Routen, die den In-Memory-Zustand der Sende-Engine lesen oder ändern (= alles, was
 // src/lib/server/station-engine.ts importiert), plus Routen mit eigenem flüchtigem Speicher, den
 // die Engine mitnutzt (Werbebuchungen, gleichzeitige Hörer) – auf Workers wäre der je Isolate leer.
+// Ebenfalls an Render: Sprachausgabe (Edge-TTS braucht Node-WebSockets – auf Workers "The
+// options.createConnection option is not implemented"), Bibliotheks-Uploads (liegen im Dateisystem
+// des Render-Servers, wo die Engine sie liest) und der Musik-Proxy (puffert komplette MP3s).
 const ENGINE_ROUTES = [
+  "/api/tts",
+  "/api/media",
+  "/api/audio",
   "/api/public/ad-requests",
   "/api/public/listener-event",
   "/api/public/listener-stats",
