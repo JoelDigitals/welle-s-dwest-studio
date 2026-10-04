@@ -36,7 +36,12 @@ import { analyzeMp3 } from "./mp3-audio";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
 import { listScheduledShows } from "./scheduled-shows-store";
-import { getTopicForDate, listRecentTopics, recordTopic, setTopicForDate } from "./show-topics-store";
+import {
+  getTopicForDate,
+  listRecentTopics,
+  recordTopic,
+  setTopicForDate,
+} from "./show-topics-store";
 import { SHOWS } from "@/lib/radio-config";
 import { berlinDateKey } from "@/lib/berlin-time";
 import { CURIOSITY_DAYS } from "@/lib/curiosity-days";
@@ -51,6 +56,10 @@ import { ensureArticlesPersisted, upgradeThinArticles } from "./news-articles-st
 // Klein genug, dass der Übergang zwischen zwei Sendeplan-Elementen nicht spürbar hängt (die
 // eigentliche Umschaltung passiert nur zum nächsten Tick, nie sofort bei Ablauf der Dauer).
 const TICK_MS = 250;
+const TICK_STUCK_MS = 120_000;
+/** Höchstdauer für das Vorbereiten eines Elements (Download bzw. KI-Text + Sprachausgabe). */
+const PREPARE_TIMEOUT_MS = 120_000;
+const MAX_PREPARE_FAILURES = 3;
 // Großzügiges Lookahead-Fenster: verhindert, dass ein hartes Zeitmarken-Vorziehen (siehe
 // tickAutopilotPlanning) auf ein Element springt, dessen Audio noch gar nicht vorbereitet wurde –
 // das war eine der Hauptursachen für hörbare Stille im Livestream (Sprung + leeres audioCache).
@@ -88,6 +97,9 @@ type EngineState = {
   currentStartedAt: number | null;
   audioCache: Map<string, AudioEntry>;
   preparing: Set<string>;
+  /** Fehlversuche beim Audio-Vorbereiten je Element – nach MAX_PREPARE_FAILURES wird es
+   *  übersprungen, statt dass die Engine für immer auf ein nie fertig werdendes Audio wartet. */
+  prepareFailures: Map<string, number>;
   news: { items: NewsFeedItem[]; at: number };
   traffic: { items: TrafficFeedItem[]; at: number };
   /** Amtliche Warnungen (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp) für Saarland/RLP. */
@@ -115,6 +127,8 @@ type EngineState = {
    *  nächste Tick sie sofort wieder scharf schaltet, solange ihr Zeitfenster noch läuft. */
   suppressedShowId: string | null;
   running: boolean;
+  /** Startzeit des laufenden Ticks – Wächter gegen einen für immer hängenden Tick (siehe tick()). */
+  runningSince: number;
   timer: ReturnType<typeof setInterval> | null;
   /** Live-Dauerstream (/live-stream): wer gerade zuhört, und wie weit im aktuellen
    *  Element schon gesendet wurde – neue Hörer:innen steigen wie bei echtem Radio live ein. */
@@ -133,6 +147,7 @@ function getState(): EngineState {
     currentStartedAt: null,
     audioCache: new Map(),
     preparing: new Set(),
+    prepareFailures: new Map(),
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
     warnings: { items: [], at: 0 },
@@ -146,6 +161,7 @@ function getState(): EngineState {
     autoLiveShowId: null,
     suppressedShowId: null,
     running: false,
+    runningSince: 0,
     timer: null,
     liveListeners: new Set(),
     streamingUid: null,
@@ -336,15 +352,31 @@ async function buildContext(state: EngineState): Promise<PlanContext> {
   };
 }
 
-/** fetch mit Timeout – ein einzelner hängender Musik-Stream darf die Engine nie blockieren. */
-async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+/** Lädt eine Datei mit Timeout – ein einzelner hängender Musik-Stream darf die Engine nie
+ *  blockieren. Der Timeout gilt bis der komplette Inhalt da ist, nicht nur bis zu den Headern:
+ *  vorher konnte ein stockender Download das Element für immer im Zustand "wird vorbereitet"
+ *  festhalten – und damit den ganzen Sendeplan. */
+async function fetchBufferWithTimeout(url: string, ms: number): Promise<Buffer> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    return await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`Musik-Stream nicht erreichbar (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
   } finally {
     clearTimeout(timer);
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${what}: Zeitüberschreitung nach ${ms / 1000}s`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** Schneidet ID3-Tags (oft mit eingebettetem Cover-Bild) heraus und liefert die echte Hördauer –
@@ -372,9 +404,7 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
     return { buffer, contentType: "audio/mpeg", duration };
   }
   if (item.streamUrl) {
-    const res = await fetchWithTimeout(rawStreamUrl(item.streamUrl), 15_000);
-    if (!res.ok) throw new Error(`Musik-Stream nicht erreichbar (${res.status})`);
-    const raw = Buffer.from(await res.arrayBuffer());
+    const raw = await fetchBufferWithTimeout(rawStreamUrl(item.streamUrl), 60_000);
     // Für den durchgehenden Live-Stream (/live-stream) muss der Content-Type immer
     // audio/mpeg sein – die Musiksuche liefert ohnehin ausschließlich MP3-Dateien.
     const { buffer, duration } = trimToAudio(raw, item.duration);
@@ -392,21 +422,20 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
   // Co-Moderator:innen-Einwurf in einer 2er-Show: statt der generischen Umformulierung reagiert
   // die zweite Stimme hier per KI echt auf das Thema, über das der Hauptmoderator gerade
   // gesprochen hat (dialogueTopic), damit ein echtes Gespräch statt zweier Solo-Ansagen entsteht.
-  const spokenText =
-    item.civilWarning
-      ? await tryHumanizeCivilWarning(text)
-      : item.kind === "moderation" && item.dialogueTopic
-        ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
-        : item.kind === "moderation" && item.handoff
-          ? await tryHumanizeHandoff(text)
-          : item.kind === "moderation" && item.correspondentReport
-            ? await tryHumanizeCorrespondentReport(text)
-            : item.kind === "moderation" && item.hotlineMix
-              ? await tryHumanizeHotlineMix(text, item.hostName)
-              : item.kind === "moderation" && item.newsGrounded
-                ? await tryHumanizeNewsReaction(text, item.hostName)
-                : item.kind === "moderation"
-                  ? await tryHumanizeModeration(text, item.hostName)
+  const spokenText = item.civilWarning
+    ? await tryHumanizeCivilWarning(text)
+    : item.kind === "moderation" && item.dialogueTopic
+      ? await tryGenerateCoHostReply(item.dialogueTopic, text, item.hostName)
+      : item.kind === "moderation" && item.handoff
+        ? await tryHumanizeHandoff(text)
+        : item.kind === "moderation" && item.correspondentReport
+          ? await tryHumanizeCorrespondentReport(text)
+          : item.kind === "moderation" && item.hotlineMix
+            ? await tryHumanizeHotlineMix(text, item.hostName)
+            : item.kind === "moderation" && item.newsGrounded
+              ? await tryHumanizeNewsReaction(text, item.hostName)
+              : item.kind === "moderation"
+                ? await tryHumanizeModeration(text, item.hostName)
                 : item.kind === "slogan"
                   ? await tryGenerateStationId(text)
                   : item.kind === "news"
@@ -436,19 +465,35 @@ function ensureAudioPreparing(state: EngineState) {
     if (item.kind === "mic") continue; // kein Audio zum Vorbereiten – kommt live rein
     if (state.audioCache.has(item.uid) || state.preparing.has(item.uid)) continue;
     state.preparing.add(item.uid);
-    prepareAudio(item)
+    withTimeout(prepareAudio(item), PREPARE_TIMEOUT_MS, "Audio-Vorbereitung")
       .then((entry) => {
-        if (entry) {
-          state.audioCache.set(item.uid, entry);
-          // Die geplante Dauer war nur eine Schätzung (Textlänge bzw. Musik-Metadaten) – jetzt auf
-          // die tatsächlich gemessene Länge korrigieren, sonst wartet der Sendeplan nach Ende der
-          // Audiodatei noch auf die (zu lange) Schätzung = stille Pause, oder schneidet bei einer
-          // zu kurzen Schätzung noch laufendes Audio ab.
-          if (entry.duration > 0) item.duration = entry.duration;
-        }
+        if (!entry) throw new Error("kein Audio verfügbar");
+        state.prepareFailures.delete(item.uid);
+        state.audioCache.set(item.uid, entry);
+        // Die geplante Dauer war nur eine Schätzung (Textlänge bzw. Musik-Metadaten) – jetzt auf
+        // die tatsächlich gemessene Länge korrigieren, sonst wartet der Sendeplan nach Ende der
+        // Audiodatei noch auf die (zu lange) Schätzung = stille Pause, oder schneidet bei einer
+        // zu kurzen Schätzung noch laufendes Audio ab.
+        if (entry.duration > 0) item.duration = entry.duration;
       })
       .catch((err) => {
         console.error("[station-engine] Audio fehlgeschlagen:", item.title, err);
+        // Ohne Audio kann das Element nie starten – advanceQueue() würde dann ewig davor warten
+        // (der Sendeplan "hängt"). Nach einigen Fehlversuchen daher einfach überspringen.
+        const failures = (state.prepareFailures.get(item.uid) ?? 0) + 1;
+        state.prepareFailures.set(item.uid, failures);
+        if (failures >= MAX_PREPARE_FAILURES) {
+          state.prepareFailures.delete(item.uid);
+          const queue = activeQueue(state);
+          if (queue.some((i) => i.uid === item.uid)) {
+            console.warn("[station-engine] Element übersprungen (kein Audio):", item.title);
+            if (queue[0]?.uid === item.uid) state.currentStartedAt = null;
+            setActiveQueue(
+              state,
+              queue.filter((i) => i.uid !== item.uid),
+            );
+          }
+        }
       })
       .finally(() => {
         state.preparing.delete(item.uid);
@@ -598,7 +643,11 @@ async function tickAutopilotPlanning(state: EngineState) {
 
   const totalPlanned = state.plan.reduce((sum, i) => sum + i.duration, 0);
   if (state.plan.length === 0) {
-    state.plan = buildPlan({ from: new Date(), hours: REFILL_HOURS, ctx: await buildContext(state) });
+    state.plan = buildPlan({
+      from: new Date(),
+      hours: REFILL_HOURS,
+      ctx: await buildContext(state),
+    });
   } else if (totalPlanned < REFILL_THRESHOLD_SECONDS) {
     const last = state.plan[state.plan.length - 1];
     const from = new Date(last.plannedAt + last.duration * 1000);
@@ -642,8 +691,14 @@ function advanceQueue(state: EngineState) {
 
 async function tick() {
   const state = getState();
-  if (state.running) return;
+  if (state.running) {
+    // Ein einziger nie zurückkehrender await (Feed, DB, KI) würde sonst die Engine für immer
+    // blockieren – der Sendeplan "hängt". Nach 2 Minuten den alten Tick aufgeben.
+    if (Date.now() - state.runningSince < TICK_STUCK_MS) return;
+    console.warn("[station-engine] Tick hing seit über 2 Minuten – wird neu gestartet.");
+  }
   state.running = true;
+  state.runningSince = Date.now();
   try {
     await refreshFeeds(state);
 

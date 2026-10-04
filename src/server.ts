@@ -4,9 +4,14 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { startStationEngine } from "./lib/server/station-engine";
 
+// Cloudflare Workers können keinen dauerhaft laufenden Prozess halten – dort läuft die Engine
+// NICHT, ihre Routen werden stattdessen an Render weitergeleitet (siehe nitro.config.ts). Ein
+// Start auf Workers würde nur Ticks erzeugen, die mit dem Request einfrieren und hängen bleiben.
+const isWorkers = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
 // Läuft dauerhaft im Server-Prozess – unabhängig davon, ob ein Studio- oder Player-Tab
 // geöffnet ist. Idempotent, auch wenn dieses Modul beim Dev-Server per HMR neu geladen wird.
-startStationEngine();
+if (!isWorkers) startStationEngine();
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -52,9 +57,6 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      // Auf Workers scheitert der Start oben im Global Scope (Timer verboten) – hier, im
-      // Request-Kontext, klappt er. Auf Node ist das ein No-op (Timer läuft schon).
-      startStationEngine();
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
