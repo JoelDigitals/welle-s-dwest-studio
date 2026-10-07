@@ -16,6 +16,12 @@ import type {
 } from "@/lib/broadcast-types";
 import { fetchNews } from "./fetch-news";
 import { fetchTraffic } from "./fetch-traffic";
+import { fetchRpr1Reports, fetchSalueReports } from "./fetch-station-traffic";
+import {
+  listStationReports,
+  syncStationReports,
+  type StoredStationReport,
+} from "./station-reports-store";
 import { fetchWarnings } from "./fetch-warnings";
 import { fetchWeather } from "./fetch-weather";
 import type { CivilWarning, WeatherData } from "@/lib/broadcast-types";
@@ -77,6 +83,8 @@ const REFILL_THRESHOLD_SECONDS = 8 * 60;
 const NEWS_TTL_MS = 5 * 60_000;
 // Muss zum gesprochenen Fallback "Wir prüfen in X Minuten erneut" passen (station-rules.ts).
 const TRAFFIC_TTL_MS = TRAFFIC_POLL_MINUTES * 60_000;
+/** Abgleich mit Radio Salü/RPR1 (Regel 3: alle 5 Minuten). */
+const STATION_REPORTS_TTL_MS = 5 * 60_000;
 // Amtliche Warnungen (Bevölkerungsschutz/Wetter/Polizei/Hochwasser) dürfen nicht lange veraltet
 // sein – kürzeres Intervall als Nachrichten/Verkehr, da eine neue Warnung so schnell wie möglich
 // on air soll.
@@ -116,6 +124,8 @@ type EngineState = {
   urgentCheckedAt: number;
   news: { items: NewsFeedItem[]; at: number };
   traffic: { items: TrafficFeedItem[]; at: number };
+  /** Blitzer + Verkehr von Radio Salü/RPR1, abgeglichen mit der Datenbank. */
+  stationReports: { items: StoredStationReport[]; at: number };
   /** Amtliche Warnungen (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp) für Saarland/RLP. */
   warnings: { items: CivilWarning[]; at: number };
   /** "<id>:<version>"-Schlüssel bereits vorgelesener Warnungen – verhindert Wiederholung. */
@@ -187,6 +197,7 @@ function getState(): EngineState {
     urgentCheckedAt: 0,
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
+    stationReports: { items: [], at: 0 },
     warnings: { items: [], at: 0 },
     warningsAnnounced: new Set(),
     weather: { data: null, at: 0 },
@@ -314,6 +325,21 @@ async function refreshFeeds(state: EngineState) {
         .catch(() => undefined),
     );
   }
+  if (now - state.stationReports.at > STATION_REPORTS_TTL_MS) {
+    state.stationReports.at = now;
+    jobs.push(
+      (async () => {
+        // Abgleich: neue Meldungen einfügen, verschwundene löschen. Schlägt ein Abruf fehl
+        // (null), bleibt der letzte Stand dieser Quelle unangetastet.
+        const [salue, rpr1] = await Promise.all([fetchSalueReports(), fetchRpr1Reports()]);
+        if (salue) await syncStationReports("salue", salue);
+        if (rpr1) await syncStationReports("rpr1", rpr1);
+        state.stationReports = { items: await listStationReports(), at: now };
+      })().catch((err) =>
+        console.error("[station-engine] Salü/RPR1-Abgleich fehlgeschlagen:", err),
+      ),
+    );
+  }
   if (now - state.warnings.at > WARNINGS_TTL_MS) {
     jobs.push(
       fetchWarnings()
@@ -373,11 +399,65 @@ async function refreshFeeds(state: EngineState) {
   );
 }
 
+const TRAFFIC_STOPWORDS = new Set([
+  "richtung",
+  "zwischen",
+  "verkehr",
+  "stockender",
+  "dichter",
+  "minuten",
+  "minute",
+  "zeitverlust",
+  "kilometer",
+]);
+function trafficWords(text: string) {
+  return new Set(
+    (text.toLowerCase().match(/[a-zäöüß-]{5,}/g) ?? []).filter((w) => !TRAFFIC_STOPWORDS.has(w)),
+  );
+}
+
+/** Offizielle Meldungen + Salü/RPR1 zusammenführen – dieselbe Lage (gleiche Straße, mindestens
+ *  zwei gemeinsame Ortswörter) nur einmal, die offizielle Autobahn-Meldung hat Vorrang. */
+function mergedTraffic(state: EngineState): TrafficFeedItem[] {
+  const out = [...state.traffic.items];
+  for (const r of state.stationReports.items) {
+    if (r.type !== "verkehr") continue;
+    const words = trafficWords(r.title);
+    const road = r.road.replace(/\s+/g, "").toUpperCase();
+    const duplicate = out.some((t) => {
+      if (road && t.road.replace(/\s+/g, "").toUpperCase() !== road) return false;
+      const shared = [...trafficWords(`${t.headline} ${t.message}`)].filter((w) => words.has(w));
+      return shared.length >= 2;
+    });
+    if (duplicate) continue;
+    out.push({
+      id: r.id,
+      road: r.road,
+      region: r.region,
+      headline: r.title,
+      message: "",
+      since: new Date(r.reportedAt).toISOString(),
+      source: r.source,
+    });
+  }
+  return out;
+}
+
 async function buildContext(state: EngineState): Promise<PlanContext> {
   return {
     media: state.media.items,
     news: state.news.items,
-    traffic: state.traffic.items,
+    traffic: mergedTraffic(state),
+    stationBlitzer: state.stationReports.items
+      .filter((r) => r.type === "blitzer")
+      .map((r) => ({
+        id: r.id,
+        source: r.source,
+        region: r.region,
+        road: r.road,
+        title: r.title,
+        reportedAt: r.reportedAt,
+      })),
     reports: [],
     hotline: await listHotlineReports(),
     freeMusic: state.freeMusic.items,
@@ -1082,7 +1162,12 @@ export function getProductionSnapshot(): {
 }
 
 export function getTrafficSnapshot(): TrafficFeedItem[] {
-  return getState().traffic.items;
+  return mergedTraffic(getState());
+}
+
+/** Aktuelle Blitzer von Radio Salü/RPR1 (für die öffentliche Übersicht). */
+export function getStationBlitzerSnapshot(): StoredStationReport[] {
+  return getState().stationReports.items.filter((r) => r.type === "blitzer");
 }
 
 /** Aktueller Nachrichten-Snapshot – für die öffentliche News-Seite (siehe /api/public/news-page). */

@@ -83,7 +83,7 @@ const clockLine = (at: number) => berlinClock(at);
 
 /** Quellenangaben (Sender/Agenturen) werden im Sprechtext nie genannt. */
 const SOURCE_WORDS =
-  /\b(ARD|ZDF|SWR|SR|tagesschau|Tagesschau|dpa|DPA|Reuters|AFP|epd|KNA|sol\.de|SOL|Blaulichtreport|SR\s?3|SWR\s?Aktuell|SWR\s?3|RPR\s?1|Radio Salü|Google News|Google|autobahn\.de|Autobahn GmbH|slaue(?:\.de)?|Quelle:?)\b/g;
+  /\b(ARD|ZDF|SWR|SR|tagesschau|Tagesschau|dpa|DPA|Reuters|AFP|epd|KNA|sol\.de|SOL|Blaulichtreport|SR\s?3|SWR\s?Aktuell|SWR\s?3|RPR\s?1|Radio Salü|RADIO SALÜ|Salü|salue\.de|Google News|Google|autobahn\.de|Autobahn GmbH|slaue(?:\.de)?|Quelle:?)\b/g;
 
 function clean(value: string) {
   return value
@@ -290,15 +290,20 @@ function kmOf(text: string, seed: number) {
   ]
     .map((m) => Number(m[1].replace(",", ".")))
     .filter((n) => n >= 1);
+  void seed;
+  // Regel 2 (station-rules.ts): keine erfundene Staulänge – steht keine im Text, wird keine genannt.
   if (all.length) return Math.max(1, Math.round(Math.max(...all)));
-  return 2 + (seed % 6);
+  return null;
 }
 
-/** Zeitverlust direkt aus dem Feed, sonst aus der Staulänge geschätzt. */
-function minutesOf(text: string, km: number) {
-  const m = text.match(/Reisezeitverlust:?\s*(\d+)\s*Minute/i);
-  if (m) return Math.max(2, Number(m[1]));
-  return Math.max(5, Math.round(km * 2.5));
+/** Zeitverlust nur, wenn die Quelle ihn nennt ("Reisezeitverlust: 8 Minuten",
+ *  "( 6 Minuten Zeitverlust)", "Zeitverlust von bis zu 25 Minuten") – nie geschätzt. */
+function minutesOf(text: string) {
+  const m =
+    text.match(/Reisezeitverlust:?\s*(\d+)\s*Minute/i) ??
+    text.match(/(\d+)\s*Minuten?\s*Zeitverlust/i) ??
+    text.match(/Zeitverlust\s+von\s+(?:bis\s+zu\s+)?(\d+)\s*Minute/i);
+  return m ? Math.max(1, Number(m[1])) : null;
 }
 
 const kmWord = (km: number) => (km === 1 ? "rund einen Kilometer" : `rund ${km} Kilometer`);
@@ -432,7 +437,7 @@ function trafficLine(
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);
   const km = kmOf(raw, index + road.length);
-  const minutes = minutesOf(raw, km);
+  const minutes = minutesOf(raw);
   const place = clean(`${dir} ${where}`) || "in der Region";
   const policeNote = isAccident ? ` ${policeStatus(raw, index)}` : "";
 
@@ -444,20 +449,29 @@ function trafficLine(
 
   if (/baustelle|bauarbeiten|verengung/i.test(raw)) {
     const until = untilOf(raw);
-    const art = /stockend|zäh/i.test(raw) ? "stockender Verkehr" : "Stau";
+    const jam = /stau|stockend|zäh|dicht/i.test(raw);
+    const art = /stockend|zäh|dicht/i.test(raw) ? "stockender Verkehr" : "Stau";
     return clean(
-      `${road ? `Auf der ${road}` : "Achtung"} ${place} ist wegen einer Baustelle nur eingeschränkt Platz. Dort steht der Verkehr auf ${kmWord(km)}, es gibt ${art}. Die Baustelle bleibt voraussichtlich ${
-        until || "noch einige Wochen"
-      } bestehen. Planen Sie dort etwa ${minWord(minutes)} mehr ein.`,
+      `${road ? `Auf der ${road}` : "Achtung"} ${place} ist wegen einer Baustelle nur eingeschränkt Platz.${
+        jam ? ` Es gibt ${art}${km ? ` auf ${kmWord(km)}` : ""}.` : ""
+      }${until ? ` Die Baustelle bleibt voraussichtlich ${until} bestehen.` : ""}${
+        minutes ? ` Planen Sie dort etwa ${minWord(minutes)} mehr ein.` : ""
+      }`,
     );
   }
 
+  // Gefahrenmeldung ohne Stau (z. B. Gegenstände auf der Fahrbahn): genau das sagen, was gemeldet
+  // ist – keine erfundene Staulänge oder Wartezeit.
+  if (!/stau|stockend|zäh|dicht|stillstand|stehen/i.test(raw)) {
+    return clean(`Achtung, ${raw}. Bitte fahren Sie dort besonders vorsichtig.${policeNote}`);
+  }
   const stillstand = /stillstand/i.test(raw);
+  const span = km ? ` auf ${kmWord(km)}` : "";
   const art = stillstand
-    ? `geht auf ${kmWord(km)} im Moment gar nichts`
-    : /stockend|zäh/i.test(raw)
-      ? `geht es auf ${kmWord(km)} nur stockend voran`
-      : `steht der Verkehr auf ${kmWord(km)}`;
+    ? `geht${span} im Moment gar nichts`
+    : /stockend|zäh|dicht/i.test(raw)
+      ? `geht es${span} nur stockend voran`
+      : `steht der Verkehr${span}`;
   const opener = pick(
     [
       `${road ? `Auf der ${road}` : "Achtung"} ${place}`,
@@ -467,15 +481,17 @@ function trafficLine(
     ],
     index,
   );
-  const tail = pick(
-    [
-      `Planen Sie hier etwa ${minWord(minutes)} mehr ein.`,
-      `Das kostet Sie im Moment rund ${minWord(minutes)}.`,
-      `Rechnen Sie mit ${minWord(minutes)} zusätzlich.`,
-      `Wer da durch muss, braucht etwa ${minWord(minutes)} länger.`,
-    ],
-    index + km,
-  );
+  const tail = minutes
+    ? pick(
+        [
+          `Planen Sie hier etwa ${minWord(minutes)} mehr ein.`,
+          `Das kostet Sie im Moment rund ${minWord(minutes)}.`,
+          `Rechnen Sie mit ${minWord(minutes)} zusätzlich.`,
+          `Wer da durch muss, braucht etwa ${minWord(minutes)} länger.`,
+        ],
+        index + (km ?? 0),
+      )
+    : "";
   return clean(
     `${opener} ${art}${reason ? ` ${reason}` : ""}. ${tail}${
       urgent ? " Bitte bilden Sie eine Rettungsgasse." : ""
@@ -788,11 +804,44 @@ function blitzerOrtPhrase(place: string, road: string, index: number): string {
  *  trafficAndBlitzerText (kombiniert mit dem Verkehr). Ca. 3 Meldungen, nicht mehr (siehe
  *  Nutzer-Feedback "immer so ca 3 Blitzermeldungen melden") - eine lange Aufzählung von 5 Orten
  *  hintereinander wirkt im Radio wie eine abgelesene Liste statt einem kurzen Service-Hinweis. */
-function blitzerPlaces(ctx: PlanContext): string[] {
-  const list = dedupeByLocation(
+type BlitzerEntry = { phrase: string; at: number; confirmed: boolean };
+
+/** Blitzer von Radio Salü/RPR1 als Sprechphrase: exakte Punkte (Höhe X, Ausfahrt, km) raus,
+ *  "A623: Friedrichsthal ..." wird zu "auf der A623, Friedrichsthal ...". */
+function stationBlitzerPhrase(title: string): string {
+  return clean(
+    stripExactSpot(title)
+      .replace(/^([AB])\s?(\d{1,3}):?\s*/, (_m, l: string, n: string) => `auf der ${l}${n}, `)
+      .replace(/,\s*,/g, ",")
+      .replace(/\s+(?:vor|nach|an|bei|in|auf|hinter)(?:\s+(?:der|dem|den|die))?\s*[,.]?\s*$/i, "")
+      .replace(/[\s,:]+$/, ""),
+  );
+}
+
+/** Regel: in jedem Verkehrspunkt die Blitzer – die neuesten, maximal 3, aber ab und zu (gut jedes
+ *  dritte Mal) rutscht stattdessen eine etwas ältere, noch gültige Meldung mit hinein. Bestätigte
+ *  öffentliche Meldungen (Radio Salü, RPR1) und unbestätigte Hörer-Hinweise zusammen, nach Zeit. */
+function blitzerEntries(ctx: PlanContext): BlitzerEntry[] {
+  const station: BlitzerEntry[] = (ctx.stationBlitzer ?? []).map((b) => ({
+    phrase: stationBlitzerPhrase(b.title),
+    at: b.reportedAt,
+    confirmed: true,
+  }));
+  const hotline: BlitzerEntry[] = dedupeByLocation(
     freshHotline(ctx).filter((h) => h.type === "blitzer" && !isAmbiguousHotline(h)),
-  ).slice(0, 3);
-  return list.map((h, i) => blitzerOrtPhrase(h.place, h.road, i));
+  ).map((h, i) => ({
+    phrase: blitzerOrtPhrase(h.place, h.road, i),
+    at: h.createdAt,
+    confirmed: false,
+  }));
+  const all = [...station, ...hotline].filter((e) => e.phrase).sort((x, y) => y.at - x.at);
+  if (all.length <= 3) return all;
+  const chosen = all.slice(0, 3);
+  if (Math.random() < 0.35) {
+    const older = all.slice(3);
+    chosen[2] = older[Math.floor(Math.random() * older.length)];
+  }
+  return chosen;
 }
 
 function joinPlaces(places: string[]): string {
@@ -801,29 +850,34 @@ function joinPlaces(places: string[]): string {
     : (places[0] ?? "");
 }
 
-export function blitzerLine(ctx: PlanContext) {
-  // Bewusst nur noch eine einfache Ortsliste, keine Region je Meldung und keine zusätzliche
-  // Detail-/Nachrichtenzeile mehr – ein Blitzer-Service ist im echten Radio kurz und listenartig
-  // ("Blitzer heute unter anderem in X und Y"), die Intro nennt Saarland und Rheinland-Pfalz schon
-  // gemeinsam, das muss nicht vor jedem einzelnen Ort wiederholt werden.
-  const places = blitzerPlaces(ctx);
-  if (!places.length) return "";
-  const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
-  return clean(
-    `${intro} ${UNCONFIRMED}, Hörerinnen und Hörer melden Blitzer: ${joinPlaces(places)}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`,
-  );
+/** Der gesprochene Blitzer-Teil: bestätigte Meldungen normal, Hörer-Hinweise als "nicht bestätigt". */
+function blitzerSentence(entries: BlitzerEntry[]): string {
+  const confirmed = entries.filter((e) => e.confirmed).map((e) => e.phrase);
+  const listener = entries.filter((e) => !e.confirmed).map((e) => e.phrase);
+  const parts: string[] = [];
+  if (confirmed.length) parts.push(`Geblitzt wird aktuell: ${joinPlaces(confirmed)}.`);
+  if (listener.length) {
+    parts.push(
+      `${confirmed.length ? "Außerdem melden" : "Es melden"} Hörerinnen und Hörer – ${UNCONFIRMED.toLowerCase()} – Blitzer: ${joinPlaces(listener)}.`,
+    );
+  }
+  parts.push("Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.");
+  return parts.join(" ");
 }
 
-/** Verkehr und Blitzer als EIN gemeinsamer Programmpunkt statt zwei getrennter Durchsagen (siehe
- *  Nutzer-Feedback: "Blitzer und Verkehrsservice sind nicht 2 Programmpunkte sondern es ist EIN
- *  Punkt und soll mal erst die Blitzer, mal erst die Meldung, mal im Wechsel gemeldet werden") -
- *  eine feste Reihenfolge (immer erst Verkehr, dann Blitzer als eigener Block) klang mit der Zeit
- *  vorhersehbar und produzierte pro Stunde zwei separate Audiodateien für inhaltlich eng
- *  verwandte Themen. Reihenfolge/Verzahnung wechselt zufällig zwischen drei Varianten. */
+export function blitzerLine(ctx: PlanContext) {
+  const entries = blitzerEntries(ctx);
+  if (!entries.length) return "";
+  const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
+  return clean(`${intro} ${blitzerSentence(entries)}`);
+}
+
+/** Verkehr und Blitzer als EIN gemeinsamer Programmpunkt – mal erst der Verkehr, mal erst die
+ *  Blitzer (siehe Nutzer-Feedback), Blitzer kommen aber in JEDEM Verkehrspunkt vor. */
 export function trafficAndBlitzerText(ctx: PlanContext, at: number): string {
   const tBody = trafficBody(ctx, at);
-  const places = blitzerPlaces(ctx);
-  const seed = berlinMinute(at) + places.length;
+  const entries = blitzerEntries(ctx);
+  const seed = berlinMinute(at) + entries.length;
   const intro = pick(
     [
       `${spokenTime(at)}, Verkehr und Blitzer für das Saarland und Rheinland-Pfalz.`,
@@ -840,53 +894,37 @@ export function trafficAndBlitzerText(ctx: PlanContext, at: number): string {
     ],
     seed + 1,
   );
-  if (!places.length) return clean(`${intro} ${tBody} ${outro}`);
-
-  const disclaimer = "Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.";
-  const order = seed % 3;
+  if (!entries.length) return clean(`${intro} ${tBody} ${outro}`);
+  const blitzer = blitzerSentence(entries);
   let body: string;
-  if (order === 0) {
-    // Erst der Verkehr, dann die Blitzer.
+  if (seed % 2 === 0) {
     const connect = pick(
       [
-        "Und dazu gleich der Blitzer-Service:",
-        "Dazu noch kurz geblitzt wird aktuell:",
-        "Und jetzt noch die gemeldeten Blitzer:",
+        "Und dazu der Blitzer-Service.",
+        "Und jetzt noch die Blitzer.",
+        "Dazu die aktuellen Blitzer.",
       ],
       seed,
     );
-    body = `${tBody} ${connect} ${UNCONFIRMED.toLowerCase()}: ${joinPlaces(places)}. ${disclaimer}`;
-  } else if (order === 1) {
-    // Erst die Blitzer, dann der Verkehr.
+    body = `${tBody} ${connect} ${blitzer}`;
+  } else {
     const connect = pick(
       ["Und jetzt der Verkehr:", "Dazu jetzt die Lage auf den Straßen:", "Kommen wir zum Verkehr:"],
       seed,
     );
-    body = `${UNCONFIRMED}, Hörerinnen und Hörer melden Blitzer: ${joinPlaces(places)}. ${disclaimer} ${connect} ${tBody}`;
-  } else {
-    // Im Wechsel: ein Blitzer vorweg als Teaser, der Verkehr dazwischen, der Rest der Blitzer zum
-    // Schluss – wirkt wie ein natürlich verzahnter Programmpunkt statt zwei starrer Blöcke.
-    const [first, ...rest] = places;
-    const teaser = pick(
-      [
-        `Vorab kurz, ${UNCONFIRMED.toLowerCase()}: Hörer melden einen Blitzer`,
-        `Gleich vorweg ein Hörerhinweis, ${UNCONFIRMED.toLowerCase()}: geblitzt wird gerade`,
-      ],
-      seed,
-    );
-    const restLine = rest.length
-      ? ` Außerdem noch geblitzt: ${joinPlaces(rest)}. ${disclaimer}`
-      : ` ${disclaimer}`;
-    body = `${teaser} ${first}. ${tBody}${restLine}`;
+    body = `${blitzer} ${connect} ${tBody}`;
   }
   return clean(`${intro} ${body} ${outro}`);
 }
 
-/** Anzahl frischer Blitzer-Meldungen – steuert den eigenen Blitzer-Block im Plan. */
+/** Anzahl aktueller Blitzer-Meldungen (Radio Salü/RPR1 + Hörer-Hotline). */
 export function blitzerCount(ctx: PlanContext) {
-  return dedupeByLocation(
-    freshHotline(ctx).filter((h) => h.type === "blitzer" && !isAmbiguousHotline(h)),
-  ).length;
+  return (
+    (ctx.stationBlitzer ?? []).length +
+    dedupeByLocation(
+      freshHotline(ctx).filter((h) => h.type === "blitzer" && !isAmbiguousHotline(h)),
+    ).length
+  );
 }
 
 /** Wichtige Meldungen (Unfälle, Sperrungen, Gefahren) – nur wenn es wirklich etwas gibt. */
@@ -1515,12 +1553,18 @@ function metaFor(sources: string[], editorNeeded = false, reason?: string): Prod
   };
 }
 
+function trafficSourceLabel(source: string | undefined) {
+  if (source === "api") return "Autobahn-API (verkehr.autobahn.de)";
+  if (source === "salue") return "Radio Salü (salue.de)";
+  if (source === "rpr1") return "RPR1 (rpr1.de)";
+  return "Verkehrs-RSS";
+}
+
 /** Interne Quellenangaben eines Verkehrsblocks (nur Metadaten, nie gesprochen – Regel 3). */
 export function trafficSources(ctx: PlanContext): string[] {
   const out: string[] = [];
-  for (const t of ctx.traffic) {
-    out.push(t.source === "api" ? "Autobahn-API (verkehr.autobahn.de)" : "Verkehrs-RSS");
-  }
+  for (const t of ctx.traffic) out.push(trafficSourceLabel(t.source));
+  for (const b of ctx.stationBlitzer ?? []) out.push(trafficSourceLabel(b.source));
   const hotline = freshHotline(ctx).filter(
     (h) => (h.type === "verkehr" || h.type === "blitzer") && !isAmbiguousHotline(h),
   );
@@ -1581,9 +1625,7 @@ export function urgentTrafficItems(
   if (!text) return { items: [], ids: [] };
   const { show, host } = showForDate(new Date(at));
   const sources = [
-    ...traffic.map((t) =>
-      t.source === "api" ? "Autobahn-API (verkehr.autobahn.de)" : "Verkehrs-RSS",
-    ),
+    ...traffic.map((t) => trafficSourceLabel(t.source)),
     ...(callers.length ? [`Hörer-Hotline (${UNCONFIRMED})`] : []),
   ];
   const speech: PlanItem = {
@@ -2229,7 +2271,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       speak(
         "traffic",
         "Verkehr & Blitzer Saarland und Rheinland-Pfalz",
-        `${blitzerCount(ctx)} Blitzer-Hörermeldungen (${UNCONFIRMED.toLowerCase()})`,
+        `${blitzerCount(ctx)} Blitzer-Meldungen`,
         trafficAndBlitzerText(ctx, cursor),
         {
           sponsor: sponsorFor("verkehr")?.name ?? null,
@@ -2410,7 +2452,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       pushWeather();
     };
 
-    // Regel 3: in den Stoßzeiten (06–10, 11:30–13:30) zusätzlich zu den Nachrichten-Verkehrsblöcken
+    // Regel 3: in den Stoßzeiten (06–10, 14–18) zusätzlich zu den Nachrichten-Verkehrsblöcken
     // (:00/:30) auch um :15 und :45 Verkehr – also alle 15 Minuten. Sonst nur nach den Nachrichten.
     const trafficMarks = [15, 45]
       .map((m) => hourStart.getTime() + m * 60_000)

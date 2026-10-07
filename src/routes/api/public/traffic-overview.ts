@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getTrafficSnapshot, startStationEngine } from "@/lib/server/station-engine";
+import {
+  getStationBlitzerSnapshot,
+  getTrafficSnapshot,
+  startStationEngine,
+} from "@/lib/server/station-engine";
 import { listHotlineReports } from "@/lib/server/hotline-store";
 import { stripExactSpot, classifyTraffic, dedupeByLocation } from "@/lib/planner";
 
@@ -43,28 +47,40 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
         );
         // Mehrere Anrufe zur selben Stelle (unterschiedlich formuliert) nicht mehrfach zeigen -
         // siehe dedupeByLocation in planner.ts.
-        const blitzer = dedupeByLocation(freshBlitzer).map((h) => ({
+        const hotlineBlitzer = dedupeByLocation(freshBlitzer).map((h) => ({
           id: h.id,
           region: h.region,
           place: h.place || null,
           road: h.road || null,
           message: stripExactSpot(h.message ?? "") || null,
           createdAt: h.createdAt,
+          confirmed: false,
         }));
+        // Abgeglichene Blitzer von Radio Salü/RPR1 – stehen so lange da, wie die Quelle sie führt.
+        const stationBlitzer = getStationBlitzerSnapshot().map((b) => ({
+          id: b.id,
+          region: b.region,
+          place: null,
+          road: b.road || null,
+          message: stripExactSpot(b.title) || null,
+          createdAt: b.reportedAt,
+          confirmed: true,
+        }));
+        const blitzer = [...stationBlitzer, ...hotlineBlitzer].sort(
+          (a, b) => b.createdAt - a.createdAt,
+        );
         // Hörer-Verkehrsmeldungen (Stau/Unfall/Sperrung) fehlten hier bisher komplett – nur
         // Blitzer wurde gezeigt. Gehören genauso zur Übersicht wie im gesprochenen Verkehrsblock
         // (siehe trafficText in planner.ts, das sie inzwischen auch zuverlässig einbezieht).
-        const hotlineTraffic = dedupeByLocation(freshVerkehr).map(
-          (h) => ({
-            id: h.id,
-            region: h.region,
-            place: h.place || null,
-            road: h.road || null,
-            message: stripExactSpot(h.message ?? "") || null,
-            createdAt: h.createdAt,
-            ...classifyTraffic(`${h.place ?? ""} ${h.road ?? ""} ${h.message ?? ""}`),
-          }),
-        );
+        const hotlineTraffic = dedupeByLocation(freshVerkehr).map((h) => ({
+          id: h.id,
+          region: h.region,
+          place: h.place || null,
+          road: h.road || null,
+          message: stripExactSpot(h.message ?? "") || null,
+          createdAt: h.createdAt,
+          ...classifyTraffic(`${h.place ?? ""} ${h.road ?? ""} ${h.message ?? ""}`),
+        }));
         // Nach Dringlichkeit sortiert (Unfälle/Sperrungen zuerst) statt in Feed-Reihenfolge - siehe
         // classifyTraffic in planner.ts, dieselbe Einordnung wie im gesprochenen Verkehrsblock.
         const trafficWithCategory = traffic

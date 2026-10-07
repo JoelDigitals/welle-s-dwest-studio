@@ -32,7 +32,7 @@ export const OVERLAY_DUCKING_DB = -9;
 /** Regel 3: Stoßzeiten (Berliner Zeit, Minuten seit Mitternacht) – dort Verkehr alle 15 min. */
 export const RUSH_WINDOWS: Array<[number, number]> = [
   [6 * 60, 10 * 60],
-  [11 * 60 + 30, 13 * 60 + 30],
+  [14 * 60, 18 * 60],
 ];
 export function isRushMinute(minuteOfDay: number) {
   return RUSH_WINDOWS.some(([from, to]) => minuteOfDay >= from && minuteOfDay < to);

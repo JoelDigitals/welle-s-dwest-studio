@@ -23,9 +23,11 @@ const isWorkers = typeof navigator !== "undefined" && navigator.userAgent === "C
 // API-Routen (Nitro-Dispatch) an server.ts vorbeilaufen. Variablen-Specifier + @vite-ignore, damit
 // der Import nur auf Workers aufgelöst wird und Node/`vite dev` daran nicht scheitern.
 const workerEnv = isWorkers
-  ? ((await import(/* @vite-ignore */ "cloudflare:" + "workers")) as {
-      env: { HYPERDRIVE?: { connectionString?: string } };
-    }).env
+  ? (
+      (await import(/* @vite-ignore */ "cloudflare:" + "workers")) as {
+        env: { HYPERDRIVE?: { connectionString?: string } };
+      }
+    ).env
   : undefined;
 
 export function getDb() {
@@ -197,6 +199,21 @@ export async function ensureSchema() {
   `;
   await sql`
     CREATE INDEX IF NOT EXISTS idx_hotline_reports_created ON hotline_reports(created_at DESC)
+  `;
+  // Abgleich mit Radio Salü und RPR1 (siehe station-reports-store.ts): Blitzer und
+  // Verkehrsmeldungen, die die Quelle gerade führt – Verschwundenes wird beim Abgleich gelöscht.
+  await sql`
+    CREATE TABLE IF NOT EXISTS station_reports (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      type TEXT NOT NULL,
+      region TEXT NOT NULL,
+      road TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL,
+      reported_at BIGINT NOT NULL,
+      first_seen BIGINT NOT NULL,
+      last_seen BIGINT NOT NULL
+    )
   `;
   g.__schemaReady = true;
 }

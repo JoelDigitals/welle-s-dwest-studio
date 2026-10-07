@@ -134,7 +134,17 @@ export type TrafficFeedItem = {
   /** "api" = offizielle Autobahn-API (verschwindet von selbst, sobald die Lage vorbei ist – nie
    *  nach Alter filtern), "rss" = Nachrichtenartikel über einen Vorfall (kann Stunden nach dem
    *  eigentlichen Ereignis noch im Feed stehen, deshalb NACH Alter gefiltert, siehe fetch-traffic.ts). */
-  source?: "api" | "rss";
+  source?: "api" | "rss" | "salue" | "rpr1";
+};
+
+/** Blitzer von Radio Salü/RPR1 (öffentlich, bestätigt) – siehe station-reports-store.ts. */
+export type StationBlitzer = {
+  id: string;
+  source: "salue" | "rpr1";
+  region: "Saarland" | "Rheinland-Pfalz";
+  road: string;
+  title: string;
+  reportedAt: number;
 };
 
 export type Report = {
@@ -206,6 +216,8 @@ export type PlanContext = {
   weather?: WeatherData | null;
   /** Live-Meldungen der Hörer (Blitzer, Staus, Gefahren) */
   hotline?: HotlineReport[];
+  /** Aktuelle Blitzer von Radio Salü/RPR1 (Abgleich, siehe station-reports-store.ts) */
+  stationBlitzer?: StationBlitzer[];
   /** Kostenlose, kommerziell nutzbare Musik aus dem Netz */
   freeMusic?: FreeTrack[];
   /** Freigegebene Werbekunden (nur nach erfolgreicher Bewerbung) */
