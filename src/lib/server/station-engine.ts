@@ -703,13 +703,33 @@ function tickMixing(state: EngineState) {
     });
 }
 
+/** Welche Warteschlange eine Mehrspur-Bearbeitung meint: die gerade sendende (Autopilot-Plan
+ *  bzw. Live-Warteschlange im Livestudio) oder ausdrücklich die Live-Warteschlange – die lässt sich
+ *  auch vorbereiten, während noch der Autopilot sendet. */
+export type QueueName = "active" | "live";
+
+function queueOf(state: EngineState, name: QueueName): PlanItem[] {
+  return name === "live" ? state.liveQueue : activeQueue(state);
+}
+function setQueueOf(state: EngineState, name: QueueName, next: PlanItem[]) {
+  if (name === "live") state.liveQueue = next;
+  else setActiveQueue(state, next);
+}
+/** Sendet diese Warteschlange gerade (dann ist ihr erstes Element on air und fest)? */
+function isOnAir(state: EngineState, name: QueueName) {
+  return name === "active" || state.liveMode;
+}
+
 /** Startzeiten nach einer Bearbeitung neu durchrechnen (inkl. Überlappungen). */
-function recalcTimes(state: EngineState) {
-  const queue = activeQueue(state);
+function recalcTimes(state: EngineState, name: QueueName = "active") {
+  const queue = queueOf(state, name);
   const current = queue[0];
   if (!current) return;
-  let t =
-    state.currentStartedAt !== null ? state.currentStartedAt + current.duration * 1000 : Date.now();
+  const onAir = isOnAir(state, name) && state.currentStartedAt !== null;
+  if (!onAir) current.plannedAt = Date.now();
+  let t = onAir
+    ? state.currentStartedAt! + current.duration * 1000
+    : current.plannedAt + current.duration * 1000;
   for (const item of queue.slice(1)) {
     const overlap = item.mixed ? 0 : (item.overlapSeconds ?? 0);
     item.plannedAt = t - overlap * 1000;
@@ -1137,12 +1157,18 @@ export type PlanEdit =
  * Bearbeitung aus der Mehrspur-Ansicht. Das gerade laufende Element und harte Zeitmarken
  * (Nachrichten) bleiben fest; Überlappung und Bett nur dort, wo die Regeln es erlauben.
  */
-export function editPlan(edit: PlanEdit): { ok: true } | { ok: false; error: string } {
+export function editPlan(
+  edit: PlanEdit,
+  queueName: QueueName = "active",
+): { ok: true } | { ok: false; error: string } {
   const state = getState();
-  const queue = [...activeQueue(state)];
+  const queue = [...queueOf(state, queueName)];
+  const onAir = isOnAir(state, queueName);
   const index = queue.findIndex((i) => i.uid === edit.uid);
   if (index < 0) return { ok: false, error: "Element nicht (mehr) im Plan" };
-  if (index === 0) return { ok: false, error: "Das laufende Element kann nicht bearbeitet werden" };
+  if (index === 0 && onAir) {
+    return { ok: false, error: "Das laufende Element kann nicht bearbeitet werden" };
+  }
   const item = queue[index];
   const invalidate = (i: PlanItem) => {
     state.audioCache.delete(i.uid);
@@ -1157,8 +1183,9 @@ export function editPlan(edit: PlanEdit): { ok: true } | { ok: false; error: str
       return { ok: false, error: "Feste Zeitmarken (Nachrichten) bleiben an ihrem Platz" };
     queue.splice(index, 1);
     const target = edit.beforeUid ? queue.findIndex((i) => i.uid === edit.beforeUid) : queue.length;
-    if (target === 0)
+    if (target === 0 && onAir) {
       return { ok: false, error: "Vor das laufende Element kann nichts geschoben werden" };
+    }
     queue.splice(target < 0 ? queue.length : target, 0, item);
     // Überlappungen/Mischungen passen nach dem Verschieben nicht mehr zum neuen Nachbarn.
     for (const i of queue.slice(1)) if (i.mixed) invalidate(i);
@@ -1188,8 +1215,8 @@ export function editPlan(edit: PlanEdit): { ok: true } | { ok: false; error: str
     }
     invalidate(item);
   }
-  setActiveQueue(state, queue);
-  recalcTimes(state);
+  setQueueOf(state, queueName, queue);
+  recalcTimes(state, queueName);
   return { ok: true };
 }
 
@@ -1283,6 +1310,7 @@ export function addToLiveQueue(input: LiveQueueInput, playNow: boolean): PlanIte
     license: input.license,
     source: input.source,
     sponsor: input.sponsor ?? null,
+    track: input.kind === "music" ? "music" : input.mediaId || input.streamUrl ? "fx" : "voice",
   };
   if (playNow) {
     const current = state.liveQueue[0];
@@ -1294,6 +1322,7 @@ export function addToLiveQueue(input: LiveQueueInput, playNow: boolean): PlanIte
   } else {
     state.liveQueue = [...state.liveQueue, item];
   }
+  recalcTimes(state, "live");
   return item;
 }
 
@@ -1306,6 +1335,7 @@ export function removeFromLiveQueue(uid: string) {
     return;
   }
   state.liveQueue = state.liveQueue.filter((i) => i.uid !== uid);
+  recalcTimes(state, "live");
 }
 
 /** Live-Warteschlange umsortieren (Drag & Drop im Studio). Das gerade laufende Element (Index 0)
@@ -1319,6 +1349,7 @@ export function reorderLiveQueue(fromUid: string, toUid: string) {
   const [moved] = list.splice(fromIdx, 1);
   list.splice(toIdx, 0, moved);
   state.liveQueue = list;
+  recalcTimes(state, "live");
 }
 
 export function getLiveQueue(): PlanItem[] {
@@ -1329,18 +1360,21 @@ export function getLiveQueue(): PlanItem[] {
  *  Staus/Blitzer-Übersicht auf der Homepage (siehe /api/public/traffic-overview). */
 /** Für den Produktions-Export (/api/production): aktueller Plan + an die Redaktion übergebene
  *  Elemente. */
-export function getProductionSnapshot(): {
+export function getProductionSnapshot(queueName: QueueName = "active"): {
   plan: PlanItem[];
   liveMode: boolean;
   currentStartedAt: number | null;
   editorHolds: EditorHold[];
+  onAir: boolean;
 } {
   const state = getState();
+  if (queueName === "live" && !state.liveMode) recalcTimes(state, "live");
   return {
-    plan: activeQueue(state),
+    plan: queueOf(state, queueName),
     liveMode: state.liveMode,
-    currentStartedAt: state.currentStartedAt,
+    currentStartedAt: isOnAir(state, queueName) ? state.currentStartedAt : null,
     editorHolds: state.editorHolds,
+    onAir: isOnAir(state, queueName),
   };
 }
 

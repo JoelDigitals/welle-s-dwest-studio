@@ -223,19 +223,30 @@ export type Show = {
   coHostId?: string;
 };
 
+/** Sendeschema: 4-Stunden-Blöcke ab 2 Uhr, damit die Morgensendung genau die Stoßzeit 6–10 Uhr
+ *  abdeckt und der Nachmittag 14–18 Uhr (siehe RUSH_WINDOWS in station-rules.ts). Die IDs bleiben
+ *  stabil (Tagesthemen in der Datenbank hängen daran), auch wenn sich Uhrzeit/Titel geändert haben. */
+export const SHOW_BLOCK_OFFSET_HOURS = 2;
+
+/** Beginn des 4-Stunden-Sendungsblocks, in dem eine (Berliner) Stunde liegt: 2, 6, 10, 14, 18, 22. */
+export function showBlockStartHour(hour: number): number {
+  const shifted = (hour - SHOW_BLOCK_OFFSET_HOURS + 24) % 24;
+  return (Math.floor(shifted / 4) * 4 + SHOW_BLOCK_OFFSET_HOURS) % 24;
+}
+
 export const SHOWS: Show[] = [
   {
-    id: "sh0",
-    startHour: 0,
-    title: "Welle Südwest in der Nacht",
-    weekdayHostId: "h6",
-    weekendHostId: "h9",
-    colour: "Ruhige Classics & Softpop",
-    topics: ["Hörergrüße", "Nachtgedanken", "Musikgeschichten"],
+    id: "sh12",
+    startHour: 2,
+    title: "Welle Südwest am frühen Morgen",
+    weekdayHostId: "h8",
+    weekendHostId: "h7",
+    colour: "Sanfter Start & Softpop",
+    topics: ["Frühaufsteher & Schichtarbeit", "Musikgeschichten", "Was heute wichtig wird"],
   },
   {
     id: "sh4",
-    startHour: 4,
+    startHour: 6,
     title: "Welle Südwest am Morgen",
     weekdayHostId: "h2",
     weekendHostId: "h10",
@@ -244,26 +255,17 @@ export const SHOWS: Show[] = [
   },
   {
     id: "sh8",
-    startHour: 8,
+    startHour: 10,
     title: "Welle Südwest am Vormittag",
     weekdayHostId: "h3",
     weekendHostId: "h8",
     colour: "Bunter Mix & Deutschpop",
-    topics: ["Servicethemen", "Verbrauchertipps", "Region im Gespräch"],
-  },
-  {
-    id: "sh12",
-    startHour: 12,
-    title: "Welle Südwest am Mittag",
-    weekdayHostId: "h8",
-    weekendHostId: "h7",
-    colour: "Leichte Kost, Hits von heute",
-    topics: ["Mittagsthema", "Kultur & Termine", "Witziges aus dem Netz"],
+    topics: ["Servicethemen", "Mittagsthema", "Region im Gespräch", "Kultur & Termine"],
     coHostId: "h10",
   },
   {
     id: "sh16",
-    startHour: 16,
+    startHour: 14,
     title: "Welle Südwest am Nachmittag",
     weekdayHostId: "h4",
     weekendHostId: "h7",
@@ -272,12 +274,21 @@ export const SHOWS: Show[] = [
   },
   {
     id: "sh20",
-    startHour: 20,
+    startHour: 18,
     title: "Welle Südwest am Abend",
     weekdayHostId: "h1",
     weekendHostId: "h9",
     colour: "Ruhiger Abendsound",
     topics: ["Rückblick auf den Tag", "Musikspecial", "Anekdoten aus der Region"],
+  },
+  {
+    id: "sh0",
+    startHour: 22,
+    title: "Welle Südwest in der Nacht",
+    weekdayHostId: "h6",
+    weekendHostId: "h9",
+    colour: "Ruhige Classics & Softpop",
+    topics: ["Hörergrüße", "Nachtgedanken", "Musikgeschichten"],
   },
 ];
 
@@ -285,7 +296,7 @@ export function showForDate(date: Date) {
   const at = date.getTime();
   // Deutsche Ortszeit, nicht die Zeitzone des Servers (Cloud-Hosting läuft oft in UTC) – sonst
   // läuft zur echten Uhrzeit die falsche Sendung/Moderation.
-  const startHour = Math.floor(berlinHour(at) / 4) * 4;
+  const startHour = showBlockStartHour(berlinHour(at));
   const show = SHOWS.find((s) => s.startHour === startHour) ?? SHOWS[0];
   const weekend = berlinIsWeekend(at);
   const host = hostById(weekend ? show.weekendHostId : show.weekdayHostId);

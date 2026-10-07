@@ -49,7 +49,7 @@ const clock = (ms: number) =>
  * Sende-Engine wirklich gemischt (siehe mixer.ts). Elemente lassen sich per Drag & Drop
  * verschieben, Überlappung und Bett im Detailbereich einstellen.
  */
-export function MultitrackPanel() {
+export function MultitrackPanel({ queue = "active" }: { queue?: "active" | "live" }) {
   const [data, setData] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -61,7 +61,10 @@ export function MultitrackPanel() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/production?format=json", { cache: "no-store" });
+      const res = await fetch(
+        `/api/production?format=json${queue === "live" ? "&queue=live" : ""}`,
+        { cache: "no-store" },
+      );
       if (!res.ok)
         throw new Error(res.status === 401 ? "Nicht angemeldet" : `Fehler ${res.status}`);
       setData((await res.json()) as Timeline);
@@ -69,7 +72,7 @@ export function MultitrackPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sendeplan nicht ladbar");
     }
-  }, []);
+  }, [queue]);
 
   useEffect(() => {
     void load();
@@ -115,7 +118,7 @@ export function MultitrackPanel() {
     const res = await fetch("/api/engine-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, queue }),
     }).catch(() => null);
     const result = (await res?.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
     setStatus(result?.ok ? success : (result?.error ?? "Bearbeitung fehlgeschlagen"));
@@ -150,9 +153,18 @@ export function MultitrackPanel() {
     <section className="panel space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="display flex items-center gap-2 text-xl">
-          <Layers className="size-5 text-primary" /> Mehrspur-Sendeplan
+          <Layers className="size-5 text-primary" />{" "}
+          {queue === "live" ? "Mehrspur – Live-Warteschlange" : "Mehrspur-Sendeplan"}
           <span className="text-sm font-normal text-muted-foreground">
-            ({data?.mode === "live" ? "Livestudio" : "Autopilot"})
+            (
+            {queue === "live"
+              ? data?.mode === "live"
+                ? "sendet"
+                : "vorbereitet"
+              : data?.mode === "live"
+                ? "Livestudio"
+                : "Autopilot"}
+            )
           </span>
         </h3>
         <div className="flex gap-1">

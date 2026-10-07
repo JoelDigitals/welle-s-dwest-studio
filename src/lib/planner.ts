@@ -2,6 +2,7 @@ import {
   SHOWS,
   showForDate,
   showTitleWithHost,
+  showBlockStartHour,
   sponsorFor,
   hostById,
   newsAnchorFor,
@@ -167,13 +168,6 @@ function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
   return [...chosen, ...reports].filter((s) => s.headline);
 }
 
-/** Anmoderation der Nachrichten inkl. Themenüberblick. */
-/** Regel 7 (station-rules.ts): keine Anmoderation mit gesprochenen Titeln/Themenliste – nur
- *  Uhrzeit, Sender und Sprecher:in, die Meldungen selbst erzählen dann flüssig. */
-function newsIntroText(host: Host, at: number, _stories: Story[], mode: "full" | "short") {
-  const label = mode === "full" ? "die Nachrichten" : "die Kurznachrichten";
-  return `Es ist ${spokenTime(at)}, ${label} auf Welle Südwest mit ${host.name}.`;
-}
 
 /** Ausführlicher Nachrichtenblock. */
 /** Nur den ersten Satz eines (ggf. mehrsätzigen) Meldungstexts – für Kurznachrichten reicht ein
@@ -1117,7 +1111,14 @@ const SMALLTALK = [
 /* ------------------------------------------------- Themen-Checkliste */
 
 export type TopicCat =
-  "kultur" | "netz" | "witziges" | "service" | "region" | "musik" | "hoerer" | "nacht";
+  | "kultur"
+  | "netz"
+  | "witziges"
+  | "service"
+  | "region"
+  | "musik"
+  | "hoerer"
+  | "nacht";
 
 /** Diese vier Rubriken müssen tagsüber in jeder Moderationsrunde vorkommen. */
 const CHECKLIST: TopicCat[] = ["kultur", "netz", "witziges", "service"];
@@ -2302,53 +2303,60 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       if (important) pushTrenner("Verkehrs-Jingle (nach der Meldung)");
     };
 
-    /** Nachrichtenblock: Anmoderation → Trenner → Meldungen → Trenner → Verkehr. Läuft über
+    /** Nachrichtenblock: Nachrichten-Jingle → Meldungen → Verkehr (ohne Anmoderation, Regel 7). Läuft über
      *  eine eigene Nachrichtensprecher:in, nicht über die Sendungsmoderation – wie im echten
      *  Regionalradio üblich. */
     const pushNewsBlock = (mode: "full" | "short", at: number) => {
       const anchor = newsAnchorFor(at / 3600_000);
       const stories = newsStories(ctx, mode === "full" ? 4 : 5);
-      const intro = newsIntroText(anchor, at, stories, mode);
       const body = newsBodyText(anchor, stories, mode, at);
       const newsMeta = metaFor(stories.map((st) => st.source ?? ""));
-      const first = push(
+      // Regel 7 (station-rules.ts): KEINE separate Anmoderation – zur Zeitmarke läuft nur der
+      // Nachrichten-Jingle, danach direkt die Meldungen. Ohne Jingle startet der Meldungsblock
+      // selbst exakt zur Zeitmarke.
+      generalIndex++;
+      const newsJingles = allNewsJingles.filter((m) => mediaIsActive(m, at));
+      const nj = newsJingles.length ? pick(newsJingles, generalIndex) : null;
+      if (nj) {
+        const marker = push(
+          {
+            kind: "jingle",
+            title: "Nachrichten-Jingle",
+            subtitle: `${clockLine(at)} Uhr`,
+            duration: nj.duration,
+            mediaId: nj.streamUrl ? undefined : nj.id,
+            streamUrl: nj.streamUrl,
+            sponsor: null,
+            hardStart: at,
+            track: "fx",
+          },
+          at,
+        );
+        if (!marker) return false;
+      }
+      const bodyItem = push(
         {
           kind: "news",
-          title: mode === "full" ? `Nachrichten — Anmoderation` : `Kurznachrichten — Anmoderation`,
-          subtitle: `${clockLine(at)} Uhr · Themen`,
-          duration: speakDuration(intro),
-          text: intro,
+          title: mode === "full" ? "Nachrichten" : "Kurznachrichten",
+          subtitle: `${clockLine(at)} Uhr · ${mode === "full" ? "ausführlich" : "kompakt"}`,
+          // Keine künstliche Mindestdauer mehr erzwingen – die reale Sprechzeit entscheidet, sonst
+          // wartet die Sendung nach dem Ende der eigentlichen Nachrichten noch auf eine erfundene
+          // Mindestlänge (stille Pause). Die Server-Engine korrigiert die Dauer ohnehin nochmal auf
+          // die tatsächlich gemessene Audiolänge, sobald sie erzeugt wurde.
+          duration: speakDuration(body),
+          text: body,
           voice: anchor.voice,
           hostId: anchor.id,
           hostName: anchor.name,
           sponsor: null,
-          hardStart: at,
           needsApproval: approval,
           approved: !approval,
           meta: newsMeta,
+          ...(nj ? {} : { hardStart: at }),
         },
-        at,
+        nj ? undefined : at,
       );
-      if (!first) return false;
-      pushTrenner("Nachrichten-Trenner");
-      push({
-        kind: "news",
-        title: mode === "full" ? "Nachrichten" : "Kurznachrichten",
-        subtitle: `${clockLine(at)} Uhr · ${mode === "full" ? "ausführlich" : "kompakt"}`,
-        // Keine künstliche Mindestdauer mehr erzwingen – die reale Sprechzeit entscheidet, sonst
-        // wartet die Sendung nach dem Ende der eigentlichen Nachrichten noch auf eine erfundene
-        // Mindestlänge (stille Pause). Die Server-Engine korrigiert die Dauer ohnehin nochmal auf
-        // die tatsächlich gemessene Audiolänge, sobald sie erzeugt wurde.
-        duration: speakDuration(body),
-        text: body,
-        voice: anchor.voice,
-        hostId: anchor.id,
-        hostName: anchor.name,
-        sponsor: null,
-        needsApproval: approval,
-        approved: !approval,
-        meta: newsMeta,
-      });
+      if (!bodyItem) return false;
       pushTrafficSegment();
       // Wichtige Meldungen werden nicht fest eingeplant, sondern nur spontan
       // eingeblendet, wenn eine neue Gefahrenlage hereinkommt.
@@ -2509,8 +2517,9 @@ export function upcomingShows(from: Date, count: number) {
   // sich von UTC immer um ganze Stunden unterscheidet.
   const hour = berlinHour(at);
   const minute = berlinMinute(at);
-  const blockStartHour = Math.floor(hour / 4) * 4;
-  const secondsIntoBlock = (hour - blockStartHour) * 3600 + minute * 60 + new Date(at).getSeconds();
+  const blockStartHour = showBlockStartHour(hour);
+  const secondsIntoBlock =
+    ((hour - blockStartHour + 24) % 24) * 3600 + minute * 60 + new Date(at).getSeconds();
   const base = at - secondsIntoBlock * 1000 - new Date(at).getMilliseconds();
   for (let i = 0; i < count; i++) {
     const d = new Date(base + i * 4 * 3600_000);

@@ -28,6 +28,8 @@ import { useMicBroadcast } from "@/lib/use-mic-broadcast";
 import type { PlanItem, TrafficFeedItem, NewsFeedItem, HotlineReport } from "@/lib/broadcast-types";
 import type { MediaRecord } from "@/lib/media-db";
 import type { LiveQueueItemInput } from "@/lib/use-live-studio";
+import { MultitrackPanel } from "./MultitrackPanel";
+import { TextStudioPanel } from "./TextStudioPanel";
 
 type Props = {
   liveMode: boolean;
@@ -149,6 +151,17 @@ export function LivePanel(props: Props) {
     duration: speakDuration(value),
   });
 
+  const liveItemFrom = (item: PlanItem): LiveQueueItemInput => ({
+    kind: item.kind,
+    title: item.title,
+    subtitle: `${host.name} · KI-Stimme`,
+    text: item.text,
+    voice: item.voice ?? host.voice,
+    hostId: host.id,
+    hostName: host.name,
+    duration: item.duration,
+  });
+
   const trafficNow = () =>
     speakItem(
       trafficText(
@@ -263,6 +276,8 @@ export function LivePanel(props: Props) {
           </div>
         </div>
       </section>
+
+      <MultitrackPanel queue="live" />
 
       {!props.liveMode && (
         <p className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
@@ -699,7 +714,7 @@ export function LivePanel(props: Props) {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Nachrichten jetzt – die einzige weiterhin KI-vertonte Ansage im Live-Workflow */}
+        {/* Nachrichten jetzt – direkt die aktuellen Meldungen mit KI-Stimme */}
         <section className="panel space-y-3 p-5">
           <h4 className="display flex items-center gap-2 text-lg">
             <Newspaper className="size-4" /> Nachrichten jetzt
@@ -830,6 +845,15 @@ export function LivePanel(props: Props) {
           )}
         </ul>
       </section>
+
+      <TextStudioPanel
+        heading="Texte für die Livesendung – Nachrichten, Verkehr, Blitzer & Moderation"
+        news={props.news}
+        traffic={props.traffic}
+        hotline={props.hotline}
+        playNow={(item) => props.playNow(liveItemFrom(item))}
+        cueNext={(item) => props.cueNext(liveItemFrom(item))}
+      />
     </div>
   );
 }

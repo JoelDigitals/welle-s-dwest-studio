@@ -48,8 +48,8 @@ function producerShort(day: string) {
   return `Heute ist ${day}. Vorschlag für den Morning-Slot (${MORNING_SLOT.fromHour}–${MORNING_SLOT.toHour} Uhr): als kurze Rubrik oder Hörerfrage aufgreifen, mit lokalem Bezug zu Saarland und Rheinland-Pfalz zuerst.`;
 }
 
-async function collect() {
-  const snap = getProductionSnapshot();
+async function collect(queue: "active" | "live" = "active") {
+  const snap = getProductionSnapshot(queue);
   const now = Date.now();
   const hotline = await listHotlineReports().catch(() => []);
   const ambiguous = hotline.filter(
@@ -122,7 +122,7 @@ function timelineJson(data: Awaited<ReturnType<typeof collect>>) {
       overlap_s: i.overlapSeconds ?? 0,
       bed: i.bed ? { title: i.bed.title } : null,
       mixed: Boolean(i.mixed),
-      current: i.uid === snap.plan[0]?.uid,
+      current: snap.onAir && i.uid === snap.plan[0]?.uid,
       overlay: i.overlay ?? { overlay: false },
       traffic_jingle_after_announcement: Boolean(i.trafficJingleAfterAnnouncement),
       text: i.text ?? null,
@@ -207,8 +207,9 @@ export const Route = createFileRoute("/api/production")({
       GET: async ({ request }) => {
         const user = await requireAuth();
         if (!user) return Response.json({ error: "Nicht angemeldet" }, { status: 401 });
-        const format = new URL(request.url).searchParams.get("format") ?? "json";
-        const data = await collect();
+        const params = new URL(request.url).searchParams;
+        const format = params.get("format") ?? "json";
+        const data = await collect(params.get("queue") === "live" ? "live" : "active");
         const stamp = berlinDateKey(data.now);
         if (format === "cue" || format === "script") {
           const body = format === "cue" ? liveCue(data) : script(data);

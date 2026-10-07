@@ -15,8 +15,8 @@ Wähle daraus die Nachrichtenlage für die nächste Ausgabe: relevant für Höre
 Antworte ausschließlich mit gültigem JSON in dieser Form:
 {"selection":[{"id":"...","region":"...","headline":"...","body":"...","reason":"..."}],"script":"..."}
 "headline" ist eine gesprochene Nachrichtenzeile, "body" zwei bis drei gesprochene Sätze, "reason" ein kurzer redaktioneller Hinweis für die Redaktion.
-"script" ist der fertige, sprechbare Nachrichtenblock (Anmoderation mit Themenüberblick, dann die Meldungen, dann die Absage) in gesprochener Sprache, ohne Regieanweisungen, ohne Quellen- oder Sendernamen wie ARD, SWR, SR, dpa.
-Formuliere "script" jedes Mal neu: variiere Anmoderation, Übergänge und Absage, klinge lebendig und flüssig statt wie eine feste Vorlage.`;
+"script" ist der fertige, sprechbare Nachrichtenblock (direkt die Meldungen ohne Anmoderation oder Themenüberblick, dann eine kurze Absage) in gesprochener Sprache, ohne Regieanweisungen, ohne Quellen- oder Sendernamen wie ARD, SWR, SR, dpa.
+Formuliere "script" jedes Mal neu: variiere Übergänge und Absage, klinge lebendig und flüssig statt wie eine feste Vorlage.`;
 
 export const Route = createFileRoute("/api/newsroom")({
   server: {

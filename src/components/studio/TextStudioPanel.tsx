@@ -12,7 +12,9 @@ type Props = {
   hotline: HotlineReport[];
   newsError?: string | null;
   trafficError?: string | null;
-  refetch: () => void;
+  refetch?: () => void;
+  /** Überschrift überschreiben (z. B. in der Livesendung). */
+  heading?: string;
   playNow: (item: PlanItem) => void;
   cueNext: (item: PlanItem) => void;
 };
@@ -32,19 +34,33 @@ function useScript() {
   const [script, setScript] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   async function run(kind: string, brief: string) {
     setLoading(true);
     setError(null);
+    setWarning(null);
     try {
       const res = await fetch("/api/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind, brief }),
       });
-      const data = (await res.json().catch(() => null)) as { text?: string; error?: string } | null;
+      const data = (await res.json().catch(() => null)) as {
+        text?: string;
+        error?: string;
+        meta?: { editor_needed?: boolean; source_missing?: boolean };
+      } | null;
       if (!res.ok) throw new Error(data?.error ?? `Fehler ${res.status}`);
       setScript(data?.text ?? "");
+      // Regel 14/15: die KI hat den Text als prüfpflichtig markiert – live entscheidet der Mensch.
+      if (data?.meta?.editor_needed) {
+        setWarning(
+          data.meta.source_missing
+            ? "Achtung: Für eine Aussage fehlt eine Quelle – bitte vor dem Senden prüfen."
+            : "Achtung: Die KI empfiehlt eine redaktionelle Prüfung vor dem Senden.",
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generierung fehlgeschlagen");
     } finally {
@@ -52,10 +68,12 @@ function useScript() {
     }
   }
 
-  return { script, setScript, loading, error, run };
+  return { script, setScript, loading, error, warning, run };
 }
 
 export function TextStudioPanel(props: Props) {
+  const moderationScript = useScript();
+  const [moderationBrief, setModerationBrief] = useState("");
   const newsScript = useScript();
   const trafficScript = useScript();
   const blitzerScript = useScript();
@@ -72,10 +90,11 @@ export function TextStudioPanel(props: Props) {
   ).slice(0, 8);
 
   const trafficBrief = [
-    ...props.traffic.slice(0, 8).map((t) => `Verkehr ${t.road} (${t.region}): ${t.message || t.headline}`),
+    ...props.traffic
+      .slice(0, 8)
+      .map((t) => `Verkehr ${t.road} (${t.region}): ${t.message || t.headline}`),
     ...hotlineTrafficReports.map(
-      (h) =>
-        `Hörer-Meldung ${h.road || h.place} (${h.region}): ${h.message}`,
+      (h) => `Hörer-Meldung ${h.road || h.place} (${h.region}): ${h.message}`,
     ),
   ].join("\n");
 
@@ -103,7 +122,7 @@ export function TextStudioPanel(props: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="display text-xl">
-            Text-Studio – Nachrichten, Verkehr & Blitzer im Detail
+            {props.heading ?? "Text-Studio – Nachrichten, Verkehr & Blitzer im Detail"}
           </h3>
           <p className="text-sm text-muted-foreground">
             Links die Nachrichten mit ausführlichen Texten, rechts Staus und Behinderungen, unten
@@ -111,9 +130,11 @@ export function TextStudioPanel(props: Props) {
             generieren und vor dem Senden bearbeiten.
           </p>
         </div>
-        <Button size="sm" variant="ghost" onClick={props.refetch}>
-          <RefreshCw className="size-4" /> Feeds aktualisieren
-        </Button>
+        {props.refetch && (
+          <Button size="sm" variant="ghost" onClick={props.refetch}>
+            <RefreshCw className="size-4" /> Feeds aktualisieren
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -170,6 +191,7 @@ export function TextStudioPanel(props: Props) {
             <ScriptEditor
               value={newsScript.script}
               onChange={newsScript.setScript}
+              warning={newsScript.warning}
               onPlay={() =>
                 props.playNow(scriptItem("news", "Nachrichten (Text-Studio)", newsScript.script))
               }
@@ -250,6 +272,7 @@ export function TextStudioPanel(props: Props) {
             <ScriptEditor
               value={trafficScript.script}
               onChange={trafficScript.setScript}
+              warning={trafficScript.warning}
               onPlay={() =>
                 props.playNow(scriptItem("traffic", "Verkehr (Text-Studio)", trafficScript.script))
               }
@@ -309,6 +332,7 @@ export function TextStudioPanel(props: Props) {
           <ScriptEditor
             value={blitzerScript.script}
             onChange={blitzerScript.setScript}
+            warning={blitzerScript.warning}
             onPlay={() =>
               props.playNow(
                 scriptItem("traffic", "Blitzer-Service (Text-Studio)", blitzerScript.script),
@@ -317,6 +341,53 @@ export function TextStudioPanel(props: Props) {
             onCue={() =>
               props.cueNext(
                 scriptItem("traffic", "Blitzer-Service (Text-Studio)", blitzerScript.script),
+              )
+            }
+          />
+        )}
+      </section>
+
+      <section className="panel space-y-3 p-5">
+        <h4 className="display text-lg">Moderation aus Stichpunkten</h4>
+        <p className="text-xs text-muted-foreground">
+          Stichpunkte, Thema oder Hörergruß eingeben – die KI formuliert eine Ansage nach dem
+          Sender-Regelwerk (keine erfundenen Fakten, keine Quellen). Zum Selbstvorlesen oder mit
+          KI-Stimme senden.
+        </p>
+        <Textarea
+          rows={3}
+          placeholder="z. B. Gleich Stadtfest in Saarlouis, Hörerin Anna grüßt ihre Kollegen…"
+          value={moderationBrief}
+          onChange={(e) => setModerationBrief(e.target.value)}
+        />
+        <Button
+          size="sm"
+          disabled={loadingOrEmpty(moderationBrief, moderationScript.loading)}
+          onClick={() => void moderationScript.run("Moderation", moderationBrief)}
+        >
+          {moderationScript.loading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Sparkles className="size-4" />
+          )}
+          Moderation generieren
+        </Button>
+        {moderationScript.error && (
+          <p className="text-sm text-destructive">{moderationScript.error}</p>
+        )}
+        {moderationScript.script && (
+          <ScriptEditor
+            value={moderationScript.script}
+            onChange={moderationScript.setScript}
+            warning={moderationScript.warning}
+            onPlay={() =>
+              props.playNow(
+                scriptItem("moderation", "Moderation (Text-Studio)", moderationScript.script),
+              )
+            }
+            onCue={() =>
+              props.cueNext(
+                scriptItem("moderation", "Moderation (Text-Studio)", moderationScript.script),
               )
             }
           />
@@ -332,14 +403,17 @@ function ScriptEditor({
   onChange,
   onPlay,
   onCue,
+  warning,
 }: {
   value: string;
   onChange: (v: string) => void;
   onPlay: () => void;
   onCue: () => void;
+  warning?: string | null;
 }) {
   return (
     <div className="space-y-2">
+      {warning && <p className="text-sm text-destructive">{warning}</p>}
       <Textarea rows={6} value={value} onChange={(e) => onChange(e.target.value)} />
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={onPlay}>
