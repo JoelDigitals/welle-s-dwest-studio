@@ -192,7 +192,11 @@ export function useLiveBroadcast() {
   // externen Icecast-URL wird hier die gesamte Join-/Prefetch-/Überblend-Logik übersprungen und
   // stattdessen direkt der eigene Dauer-Stream (/live-stream) verwendet, der die Mikrofon-Bytes
   // inzwischen live weiterreicht (siehe pushMicAudioChunk in station-engine.ts).
-  const stream = state?.streamUrl ?? (state?.kind === "mic" ? "/live-stream" : null);
+  // Der Sender liefert einen durchgehenden, fertig gemischten Stream (Sendemischer in
+  // live-mixer.ts: Überlappungen, Ducking, Betten, Mikrofon – alles schon drin). Der Player hängt
+  // sich deshalb immer an diesen Dauer-Stream (oder eine im Studio hinterlegte Icecast-URL) statt
+  // einzelne Dateien nachzuladen und selbst zu überblenden.
+  const stream = state?.streamUrl ?? "/live-stream";
 
   const getSlot = (key: "a" | "b"): Slot => {
     let slot = slotsRef.current[key];

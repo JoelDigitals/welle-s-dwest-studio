@@ -16,6 +16,8 @@ type TimelineItem = {
   hard_start: string | null;
   track: Track;
   overlap_s: number;
+  overlap_auto: boolean;
+  overlap_blocked: string | null;
   bed: { title: string } | null;
   mixed: boolean;
   current: boolean;
@@ -46,7 +48,7 @@ const clock = (ms: number) =>
 /**
  * Mehrspur-Ansicht des echten Sendeplans (wie Profi-Radiosoftware): Musik, Sprache, Jingle/FX und
  * Bett als eigene Spuren auf einer Zeitleiste. Überlappungen sind sichtbar und werden von der
- * Sende-Engine wirklich gemischt (siehe mixer.ts). Elemente lassen sich per Drag & Drop
+ * Sendemischer live gemischt (siehe live-mixer.ts), die automatische Regie entscheidet selbst. Elemente lassen sich per Drag & Drop
  * verschieben, Überlappung und Bett im Detailbereich einstellen.
  */
 export function MultitrackPanel({ queue = "active" }: { queue?: "active" | "live" }) {
@@ -241,8 +243,9 @@ export function MultitrackPanel({ queue = "active" }: { queue?: "active" | "live
                         {lane.id === "bed" ? item.bed?.title : item.title}
                       </span>
                       <span className="block truncate text-muted-foreground">
-                        {item.overlap_s ? `↤ ${item.overlap_s}s ` : ""}
-                        {item.mixed ? "gemischt" : ""}
+                        {item.overlap_s
+                          ? `↤ ${item.overlap_s}s ${item.overlap_auto ? "auto" : ""}`
+                          : ""}
                       </span>
                     </button>
                   ))}
@@ -311,7 +314,13 @@ export function MultitrackPanel({ queue = "active" }: { queue?: "active" | "live
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <p className="text-xs font-medium">
-                  Überlappung mit dem vorigen Element: {overlapDraft}s
+                  Überlappung mit dem vorigen Element: {selectedItem.overlap_s}s (
+                  {selectedItem.overlap_blocked
+                    ? `gesperrt – ${selectedItem.overlap_blocked}`
+                    : selectedItem.overlap_auto
+                      ? "automatische Regie"
+                      : "von Hand"}
+                  ) · neu: {overlapDraft}s
                 </p>
                 <Slider
                   min={0}
@@ -331,6 +340,18 @@ export function MultitrackPanel({ queue = "active" }: { queue?: "active" | "live
                   }
                 >
                   Überlappung übernehmen
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    void edit(
+                      { action: "overlap", uid: selectedItem.uid, seconds: null },
+                      "Automatische Regie entscheidet",
+                    )
+                  }
+                >
+                  Automatisch
                 </Button>
               </div>
               <div className="space-y-2">

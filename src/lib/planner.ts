@@ -168,7 +168,6 @@ function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
   return [...chosen, ...reports].filter((s) => s.headline);
 }
 
-
 /** Ausführlicher Nachrichtenblock. */
 /** Nur den ersten Satz eines (ggf. mehrsätzigen) Meldungstexts – für Kurznachrichten reicht ein
  *  kurzer Kontextsatz zur Schlagzeile, nicht der ganze ausführliche Text. */
@@ -267,6 +266,9 @@ function reasonOf(text: string) {
     return "nach einem Unfall";
   if (t.includes("bergung")) return "wegen Bergungsarbeiten";
   if (t.includes("baustelle") || t.includes("bauarbeiten")) return "wegen einer Baustelle";
+  // Konkrete Arbeiten aus der Meldung übernehmen ("Brückenarbeiten", "Fahrbahnarbeiten" …).
+  const works = text.match(/([A-Za-zÄÖÜäöüß-]{3,}arbeiten)/)?.[1];
+  if (works) return `wegen ${works[0].toUpperCase()}${works.slice(1)}`;
   if (t.includes("verengung")) return "wegen einer Fahrbahnverengung";
   if (t.includes("gegenst")) return "wegen Gegenständen auf der Fahrbahn";
   if (t.includes("geisterfahrer")) return "wegen eines Falschfahrers";
@@ -439,7 +441,10 @@ function trafficLine(
 
   if (/vollsperr|gesperrt/i.test(raw)) {
     return clean(
-      `${road ? `Auf der ${road}` : "Achtung"} ${place} ist die Strecke ${reason} gesperrt. Bitte weiträumig umfahren.${policeNote}`,
+      `${road ? `Auf der ${road}` : "Achtung"} ${place} ist die Strecke${
+        // "wegen einer Sperrung gesperrt" wäre doppelt – dann lieber gar keinen Grund nennen.
+        reason && reason !== "wegen einer Sperrung" ? ` ${reason}` : ""
+      } gesperrt. Bitte weiträumig umfahren.${policeNote}`,
     );
   }
 
@@ -1111,14 +1116,7 @@ const SMALLTALK = [
 /* ------------------------------------------------- Themen-Checkliste */
 
 export type TopicCat =
-  | "kultur"
-  | "netz"
-  | "witziges"
-  | "service"
-  | "region"
-  | "musik"
-  | "hoerer"
-  | "nacht";
+  "kultur" | "netz" | "witziges" | "service" | "region" | "musik" | "hoerer" | "nacht";
 
 /** Diese vier Rubriken müssen tagsüber in jeder Moderationsrunde vorkommen. */
 const CHECKLIST: TopicCat[] = ["kultur", "netz", "witziges", "service"];

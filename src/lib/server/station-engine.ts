@@ -49,7 +49,16 @@ import {
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
-import { mixBed, mixOverlap } from "./mixer";
+import {
+  playDeck,
+  pushMicChunk,
+  startMicDeck,
+  startMixer,
+  stopAllDecks,
+  stopDeck,
+  subscribeStream,
+} from "./live-mixer";
+import { effectiveOverlap, overlapForbidden } from "@/lib/auto-regie";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
 import { listScheduledShows } from "./scheduled-shows-store";
@@ -103,8 +112,13 @@ const SCHEDULED_SHOWS_TTL_MS = 30_000;
 const DAILY_THEMES_TTL_MS = 10 * 60_000;
 
 /** duration ist die real gemessene Hördauer (aus den MP3-Frames) – nicht die grobe Planungsschätzung. */
-type AudioEntry = { buffer: Buffer; contentType: string; duration: number };
-type LiveListener = { controller: ReadableStreamDefaultController<Uint8Array> };
+type AudioEntry = {
+  buffer: Buffer;
+  contentType: string;
+  duration: number;
+  /** Mehrspur: Musikbett, das der Sendemischer unter diesem Element mitlaufen lässt. */
+  bed?: Buffer;
+};
 
 type EngineState = {
   plan: PlanItem[];
@@ -160,11 +174,6 @@ type EngineState = {
   /** Startzeit des laufenden Ticks – Wächter gegen einen für immer hängenden Tick (siehe tick()). */
   runningSince: number;
   timer: ReturnType<typeof setInterval> | null;
-  /** Live-Dauerstream (/live-stream): wer gerade zuhört, und wie weit im aktuellen
-   *  Element schon gesendet wurde – neue Hörer:innen steigen wie bei echtem Radio live ein. */
-  liveListeners: Set<LiveListener>;
-  streamingUid: string | null;
-  streamedBytes: number;
 };
 
 export type EditorHold = {
@@ -218,9 +227,6 @@ function getState(): EngineState {
     running: false,
     runningSince: 0,
     timer: null,
-    liveListeners: new Set(),
-    streamingUid: null,
-    streamedBytes: 0,
   };
   return g.__stationEngine;
 }
@@ -605,8 +611,9 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
     item.hostId,
   );
   const { buffer: voice, duration: voiceDuration } = trimToAudio(raw, item.duration);
-  // Mehrspur: Musikbett unter einem kurzen Callout (Regel 6) – schlägt das Mischen fehl, läuft
-  // die Ansage einfach ohne Bett.
+  // Mehrspur: Musikbett unter einem kurzen Callout (Regel 6) – mischt der Sendemischer live
+  // darunter. Fehlt es, läuft die Ansage einfach ohne Bett.
+  let bed: Buffer | undefined;
   if (item.bed) {
     try {
       const bedRaw = item.bed.mediaId
@@ -614,93 +621,12 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
         : item.bed.streamUrl
           ? await fetchBufferWithTimeout(rawStreamUrl(item.bed.streamUrl), 30_000)
           : null;
-      if (bedRaw) {
-        const mixed = await mixBed({ voice, bed: trimToAudio(bedRaw, 0).buffer, bedDb: -12 });
-        const { buffer, duration } = trimToAudio(mixed, voiceDuration);
-        return { buffer, contentType: "audio/mpeg", duration };
-      }
+      if (bedRaw) bed = trimToAudio(bedRaw, 0).buffer;
     } catch (err) {
-      console.error("[station-engine] Bett konnte nicht gemischt werden:", item.title, err);
+      console.error("[station-engine] Bett nicht ladbar:", item.title, err);
     }
   }
-  return { buffer: voice, contentType: "audio/mpeg", duration: voiceDuration };
-}
-
-/** Darf ein Element sich über das vorige legen? Regel 4/6: nur Jingles/FX und kurze Callouts
- *  (max. 5 Wörter) – nie Nachrichten, Verkehr, Warnungen, Werbung oder längere Sprache. */
-export function overlapAllowed(item: PlanItem): boolean {
-  if (item.civilWarning || item.trafficJingleAfterAnnouncement) return false;
-  if (item.kind === "jingle") return true;
-  if (item.kind === "slogan" || item.kind === "moderation") {
-    return (
-      Boolean(item.mediaId || item.streamUrl) || wordCount(item.text ?? "") <= OVERLAY_WORDS_MAX
-    );
-  }
-  return false;
-}
-
-/**
- * Mehrspur-Mischung zur Laufzeit: Hat das nächste Element eine Überlappung, wird – solange das
- * aktuelle noch weit genug vom Ende weg ist – das Ende des aktuellen abgeschnitten und unter den
- * Anfang des nächsten gemischt (Song geduckt unter Callout, ausgeblendet unter Jingle). Läuft im
- * Hintergrund; ist es zu spät, spielen beide einfach nacheinander.
- */
-function tickMixing(state: EngineState) {
-  if (state.mixingUid) return;
-  const queue = activeQueue(state);
-  const current = queue[0];
-  const next = queue[1];
-  if (!current || !next || next.mixed || !next.overlapSeconds || state.currentStartedAt === null) {
-    return;
-  }
-  if (current.kind !== "music" || !overlapAllowed(next)) return;
-  const a = state.audioCache.get(current.uid);
-  const b = state.audioCache.get(next.uid);
-  if (!a || !b) return;
-  const remaining = current.duration - (Date.now() - state.currentStartedAt) / 1000;
-  if (remaining < next.overlapSeconds + 15) return;
-  state.mixingUid = next.uid;
-  mixOverlap({
-    under: a.buffer,
-    over: b.buffer,
-    overlapSeconds: next.overlapSeconds,
-    mode: next.kind === "jingle" ? "fade" : "duck",
-    duckDb: OVERLAY_DUCKING_DB,
-  })
-    .then((result) => {
-      if (!result) return;
-      const q = activeQueue(state);
-      // Nur übernehmen, wenn sich inzwischen nichts verschoben hat und der Live-Stream das Ende
-      // des aktuellen Elements noch nicht erreicht hat.
-      if (q[0]?.uid !== current.uid || q[1]?.uid !== next.uid || state.currentStartedAt === null)
-        return;
-      const left = current.duration - (Date.now() - state.currentStartedAt) / 1000;
-      if (left < result.overlapSeconds + 3) return;
-      const streamedShare =
-        state.streamingUid === current.uid ? state.streamedBytes / a.buffer.length : 0;
-      if (streamedShare * a.buffer.length > result.underTrimmed.length) return;
-      const newDuration = current.duration - result.overlapSeconds;
-      state.audioCache.set(current.uid, {
-        ...a,
-        buffer: result.underTrimmed,
-        duration: newDuration,
-      });
-      if (state.streamingUid === current.uid) {
-        state.streamedBytes = Math.floor(
-          (state.streamedBytes / a.buffer.length) * result.underTrimmed.length,
-        );
-      }
-      current.duration = newDuration;
-      const mixedDuration = analyzeMp3(result.overMixed).durationSeconds || next.duration;
-      state.audioCache.set(next.uid, { ...b, buffer: result.overMixed, duration: mixedDuration });
-      next.duration = mixedDuration;
-      next.mixed = true;
-      next.talkoverSeconds = undefined;
-    })
-    .catch((err) => console.error("[station-engine] Mehrspur-Mischung fehlgeschlagen:", err))
-    .finally(() => {
-      state.mixingUid = null;
-    });
+  return { buffer: voice, contentType: "audio/mpeg", duration: voiceDuration, bed };
 }
 
 /** Welche Warteschlange eine Mehrspur-Bearbeitung meint: die gerade sendende (Autopilot-Plan
@@ -730,10 +656,11 @@ function recalcTimes(state: EngineState, name: QueueName = "active") {
   let t = onAir
     ? state.currentStartedAt! + current.duration * 1000
     : current.plannedAt + current.duration * 1000;
+  let prev: PlanItem = current;
   for (const item of queue.slice(1)) {
-    const overlap = item.mixed ? 0 : (item.overlapSeconds ?? 0);
-    item.plannedAt = t - overlap * 1000;
+    item.plannedAt = t - effectiveOverlap(prev, item) * 1000;
     t = item.plannedAt + item.duration * 1000;
+    prev = item;
   }
 }
 
@@ -770,7 +697,10 @@ function ensureAudioPreparing(state: EngineState) {
             ...state.editorHolds,
           ].slice(0, 50);
           const queue = activeQueue(state);
-          if (queue[0]?.uid === item.uid) state.currentStartedAt = null;
+          if (queue[0]?.uid === item.uid) {
+            stopDeck(item.uid);
+            state.currentStartedAt = null;
+          }
           setActiveQueue(
             state,
             queue.filter((i) => i.uid !== item.uid),
@@ -787,7 +717,10 @@ function ensureAudioPreparing(state: EngineState) {
           const queue = activeQueue(state);
           if (queue.some((i) => i.uid === item.uid)) {
             console.warn("[station-engine] Element übersprungen (kein Audio):", item.title);
-            if (queue[0]?.uid === item.uid) state.currentStartedAt = null;
+            if (queue[0]?.uid === item.uid) {
+              stopDeck(item.uid);
+              state.currentStartedAt = null;
+            }
             setActiveQueue(
               state,
               queue.filter((i) => i.uid !== item.uid),
@@ -937,6 +870,8 @@ async function tickAutopilotPlanning(state: EngineState) {
   // sonst würde der Sprung selbst eine hörbare Stille erzeugen (Timer läuft schon, Audio fehlt
   // noch). Ein paar Sekunden Zeitplan-Drift sind unhörbar, eine Stille im Livestream nicht.
   if (hardIdx > 0 && state.audioCache.has(state.plan[hardIdx].uid)) {
+    // Feste Zeitmarke (Nachrichten): Laufendes kurz ausblenden, dann sofort die Marke.
+    stopDeck(state.plan[0].uid, 0.8);
     state.plan = state.plan.slice(hardIdx);
     state.currentStartedAt = null;
   }
@@ -976,6 +911,24 @@ async function tickUrgentTraffic(state: EngineState) {
   state.plan = [...state.plan.slice(0, 1), ...items, ...state.plan.slice(1)];
 }
 
+/** Element on air schalten: Startzeit setzen und als Deck in den Sendemischer geben. */
+function startOnAir(state: EngineState, item: PlanItem, fadeOthersSeconds: number) {
+  state.currentStartedAt = Date.now();
+  if (item.kind === "mic") {
+    startMicDeck(item.uid);
+    return;
+  }
+  const entry = state.audioCache.get(item.uid);
+  if (!entry) return;
+  playDeck({
+    uid: item.uid,
+    role: item.kind === "music" ? "music" : item.mediaId || item.streamUrl ? "fx" : "voice",
+    audio: entry.buffer,
+    bed: entry.bed ?? null,
+    fadeOthersSeconds,
+  });
+}
+
 /** Generischer Fortschritt durch die jeweils aktive Warteschlange (Autopilot-Plan oder
  *  Live-Warteschlange) – sobald ein Element zu Ende ist, direkt im selben Tick das nächste
  *  starten, wenn dessen Audio schon vorbereitet ist. Harte Zeitmarken/Lückenfüller gibt es nur
@@ -995,17 +948,31 @@ function advanceQueue(state: EngineState) {
       // "mic" hat kein Audio zum Cachen (die Bytes kommen erst live rein, sobald gesprochen wird) –
       // muss trotzdem sofort starten, sonst würde die Wiedergabe für immer hier hängen bleiben.
       if (state.audioCache.has(current.uid) || current.kind === "mic") {
-        state.currentStartedAt = Date.now();
+        startOnAir(state, current, 0);
       }
       break;
     }
     const elapsed = (Date.now() - state.currentStartedAt) / 1000;
+    // Mehrspur/automatische Regie: das nächste Element startet schon vor dem Ende des aktuellen
+    // (Ansage über Song-Ausklang, Song unter Ansage-Ende, Jingle über Song-Ende). Das aktuelle
+    // Deck läuft im Sendemischer einfach weiter aus.
+    const next = queue[1];
+    const overlap = next ? effectiveOverlap(current, next) : 0;
+    if (
+      next &&
+      overlap > 0 &&
+      elapsed >= current.duration - overlap &&
+      state.audioCache.has(next.uid)
+    ) {
+      state.audioCache.delete(current.uid);
+      setActiveQueue(state, queue.slice(1));
+      startOnAir(state, next, current.kind === "music" && next.kind === "jingle" ? overlap : 0);
+      continue;
+    }
     if (elapsed < current.duration) break;
     state.audioCache.delete(current.uid);
     setActiveQueue(state, queue.slice(1));
     state.currentStartedAt = null;
-    state.streamingUid = null;
-    state.streamedBytes = 0;
   }
 }
 
@@ -1031,8 +998,6 @@ async function tick() {
 
     ensureAudioPreparing(state);
     advanceQueue(state);
-    tickMixing(state);
-    streamLiveAudio(state);
     publishNowPlaying(state);
   } catch (err) {
     console.error("[station-engine] Tick-Fehler:", err);
@@ -1041,83 +1006,24 @@ async function tick() {
   }
 }
 
-/**
- * Speist den durchgehenden Live-Stream (/live-stream): schickt genau so viele Bytes des
- * aktuellen Elements an alle verbundenen Hörer:innen, wie inzwischen "vergangen" ist – dieselbe
- * Uhr (currentStartedAt), die auch nowPlaying.elapsed antreibt. So bleibt der Stream in Echtzeit,
- * statt eine ganze Datei auf einmal loszuschicken.
- */
-function streamLiveAudio(state: EngineState) {
-  if (state.liveListeners.size === 0) return;
-  const current = activeQueue(state)[0];
-  if (!current || state.currentStartedAt === null) return;
-  // Mikrofon-Element: nichts aus dem audioCache streamen – die echten Bytes kommen live über
-  // pushMicAudioChunk() (Mikrofon-Ingest-Route) direkt an state.liveListeners.
-  if (current.kind === "mic") return;
-  const entry = state.audioCache.get(current.uid);
-  if (!entry) return;
-
-  if (state.streamingUid !== current.uid) {
-    state.streamingUid = current.uid;
-    state.streamedBytes = 0;
-  }
-  const elapsed = Math.min(current.duration, (Date.now() - state.currentStartedAt) / 1000);
-  const targetBytes = Math.floor((elapsed / current.duration) * entry.buffer.length);
-  if (targetBytes <= state.streamedBytes) return;
-
-  const chunk = entry.buffer.subarray(state.streamedBytes, targetBytes);
-  state.streamedBytes = targetBytes;
-  for (const listener of state.liveListeners) {
-    try {
-      listener.controller.enqueue(new Uint8Array(chunk));
-    } catch {
-      state.liveListeners.delete(listener);
-    }
-  }
-}
-
-/** Neue Hörer:in für /live-stream – steigt wie bei echtem Radio genau jetzt mit ein.
- *  Bekommt sofort den bereits "gesendeten" Teil des laufenden Elements als einmaligen Schub
- *  vorab (statt nur die künftige Echtzeit-Trickle abzuwarten) – sonst dauert es bei einer reinen
- *  Echtzeit-Rate mehrere Sekunden Stille, bis der Player genug Puffer zum Start hat. */
+/** Neue:r Hörer:in für /live-stream – der durchgehende Stream aus dem Sendemischer. */
 export function subscribeLive(): ReadableStream<Uint8Array> {
-  const state = getState();
-  let listener: LiveListener;
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      listener = { controller };
-      state.liveListeners.add(listener);
-      const current = activeQueue(state)[0];
-      const entry = current ? state.audioCache.get(current.uid) : undefined;
-      if (entry && state.streamedBytes > 0) {
-        controller.enqueue(new Uint8Array(entry.buffer.subarray(0, state.streamedBytes)));
-      }
-    },
-    cancel() {
-      state.liveListeners.delete(listener);
-    },
-  });
+  return subscribeStream();
 }
 
-/** Nimmt einen MP3-Byte-Chunk vom Mikrofon-Ingest (/api/mic-stream) entgegen und reicht ihn direkt
- *  an alle /live-stream-Hörer:innen durch – nur wirksam, während wirklich ein "mic"-Element läuft
- *  (Sicherheitscheck gegen Bytes zur falschen Zeit, z. B. nach dem Beenden der Aufnahme). */
+/** MP3-Chunk vom Mikrofon-Ingest (/api/mic-stream) – nur wirksam, während wirklich ein
+ *  "mic"-Element läuft (Schutz gegen Bytes zur falschen Zeit). */
 export function pushMicAudioChunk(buffer: Buffer) {
   const state = getState();
   const current = activeQueue(state)[0];
   if (!current || current.kind !== "mic") return;
-  for (const listener of state.liveListeners) {
-    try {
-      listener.controller.enqueue(new Uint8Array(buffer));
-    } catch {
-      state.liveListeners.delete(listener);
-    }
-  }
+  pushMicChunk(current.uid, buffer);
 }
 
 export function startStationEngine() {
   const state = getState();
   if (state.timer) return;
+  startMixer();
   try {
     state.timer = setInterval(() => void tick(), TICK_MS);
   } catch {
@@ -1149,7 +1055,7 @@ export function getAudioByUid(uid: string): (AudioEntry & { uid: string }) | nul
 
 export type PlanEdit =
   | { action: "move"; uid: string; beforeUid: string | null }
-  | { action: "overlap"; uid: string; seconds: number }
+  | { action: "overlap"; uid: string; seconds: number | null }
   | { action: "bed"; uid: string; on: boolean }
   | { action: "remove"; uid: string };
 
@@ -1190,11 +1096,11 @@ export function editPlan(
     // Überlappungen/Mischungen passen nach dem Verschieben nicht mehr zum neuen Nachbarn.
     for (const i of queue.slice(1)) if (i.mixed) invalidate(i);
   } else if (edit.action === "overlap") {
-    if (!overlapAllowed(item) && edit.seconds > 0) {
-      return { ok: false, error: "Überlappung nur für Jingles und kurze Callouts (max. 5 Wörter)" };
-    }
-    item.overlapSeconds = Math.max(0, Math.min(8, edit.seconds)) || undefined;
-    if (item.mixed) invalidate(item);
+    // null = automatische Regie entscheidet; Zahl (auch 0) = Handeinstellung.
+    const reason = overlapForbidden(queue[index - 1], item);
+    if (reason && edit.seconds) return { ok: false, error: `Keine Überlappung: ${reason}` };
+    item.overlapSeconds =
+      edit.seconds === null ? undefined : Math.max(0, Math.min(8, edit.seconds));
   } else if (edit.action === "bed") {
     if (edit.on) {
       const spoken = Boolean(item.text) && !item.mediaId && !item.streamUrl;
@@ -1227,11 +1133,10 @@ export function forceSkipCurrent(): boolean {
   const queue = activeQueue(state);
   const current = queue[0];
   if (!current) return false;
+  stopDeck(current.uid);
   state.audioCache.delete(current.uid);
   setActiveQueue(state, queue.slice(1));
   state.currentStartedAt = null;
-  state.streamingUid = null;
-  state.streamedBytes = 0;
   return true;
 }
 
@@ -1249,9 +1154,8 @@ export function setLiveMode(on: boolean) {
   const state = getState();
   if (state.liveMode === on) return;
   state.liveMode = on;
+  stopAllDecks();
   state.currentStartedAt = null;
-  state.streamingUid = null;
-  state.streamedBytes = 0;
   state.audioCache.clear();
   state.preparing.clear();
   if (!on) {
@@ -1314,11 +1218,12 @@ export function addToLiveQueue(input: LiveQueueInput, playNow: boolean): PlanIte
   };
   if (playNow) {
     const current = state.liveQueue[0];
-    if (current) state.audioCache.delete(current.uid);
+    if (current) {
+      if (state.liveMode) stopDeck(current.uid);
+      state.audioCache.delete(current.uid);
+    }
     state.liveQueue = [item, ...state.liveQueue.slice(current ? 1 : 0)];
     state.currentStartedAt = null;
-    state.streamingUid = null;
-    state.streamedBytes = 0;
   } else {
     state.liveQueue = [...state.liveQueue, item];
   }

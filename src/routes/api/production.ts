@@ -14,6 +14,7 @@ import {
   type ProductionMeta,
 } from "@/lib/station-rules";
 import type { PlanItem } from "@/lib/broadcast-types";
+import { effectiveOverlap, overlapForbidden } from "@/lib/auto-regie";
 
 /**
  * Produktions-Export nach Regel 5 und 11 (station-rules.ts):
@@ -108,7 +109,7 @@ function timelineJson(data: Awaited<ReturnType<typeof collect>>) {
     mode: snap.liveMode ? "live" : "autopilot",
     current_started_at: snap.currentStartedAt ? iso(snap.currentStartedAt) : null,
     buffer_s_per_block: BLOCK_BUFFER_S,
-    timeline: snap.plan.map((i) => ({
+    timeline: snap.plan.map((i, idx) => ({
       uid: i.uid,
       start: iso(i.plannedAt),
       duration_s: Math.round(i.duration),
@@ -119,7 +120,10 @@ function timelineJson(data: Awaited<ReturnType<typeof collect>>) {
       hard_start: i.hardStart ? iso(i.hardStart) : null,
       song_slot: Boolean(i.songSlot),
       track: i.track ?? (i.kind === "music" ? "music" : i.mediaId || i.streamUrl ? "fx" : "voice"),
-      overlap_s: i.overlapSeconds ?? 0,
+      // Tatsächliche Überlappung mit dem vorigen Element (automatische Regie oder Handeinstellung).
+      overlap_s: effectiveOverlap(snap.plan[idx - 1], i),
+      overlap_auto: typeof i.overlapSeconds !== "number",
+      overlap_blocked: idx > 0 ? overlapForbidden(snap.plan[idx - 1], i) : null,
       bed: i.bed ? { title: i.bed.title } : null,
       mixed: Boolean(i.mixed),
       current: snap.onAir && i.uid === snap.plan[0]?.uid,
