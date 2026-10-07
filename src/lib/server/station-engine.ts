@@ -1021,6 +1021,9 @@ export function pushMicAudioChunk(buffer: Buffer) {
 }
 
 export function startStationEngine() {
+  // Cloudflare Workers: keine Engine (Timer im Global Scope sind dort verboten, und die
+  // Engine-Routen werden ohnehin an Render weitergeleitet, siehe nitro.config.ts).
+  if (typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers") return;
   const state = getState();
   if (state.timer) return;
   startMixer();
