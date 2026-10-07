@@ -43,6 +43,7 @@ const ENGINE_ORIGIN = (
 // des Render-Servers, wo die Engine sie liest) und der Musik-Proxy (puffert komplette MP3s).
 const ENGINE_ROUTES = [
   "/api/production",
+  "/api/engine-plan",
   "/api/tts",
   "/api/media",
   "/api/audio",

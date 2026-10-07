@@ -23,6 +23,7 @@ import { StreamHealth } from "@/components/studio/StreamHealth";
 import { AdRequestsPanel } from "@/components/studio/AdRequestsPanel";
 import { StatistikPanel } from "@/components/studio/StatistikPanel";
 import { AccountsPanel } from "@/components/studio/AccountsPanel";
+import { MultitrackPanel } from "@/components/studio/MultitrackPanel";
 import { useRadioEngine } from "@/lib/use-radio-engine";
 import { useLiveBroadcast } from "@/lib/use-live-broadcast";
 import { useLiveStudio } from "@/lib/use-live-studio";
@@ -278,6 +279,7 @@ function Index() {
         <Tabs defaultValue="autopilot">
           <TabsList className="flex h-auto flex-wrap justify-start gap-1">
             <TabsTrigger value="autopilot">Autopilot</TabsTrigger>
+            <TabsTrigger value="mehrspur">Mehrspur</TabsTrigger>
             <TabsTrigger value="live">Livesendung</TabsTrigger>
             <TabsTrigger value="newsroom">Newsroom</TabsTrigger>
             <TabsTrigger value="redaktion">Nachrichten & Verkehr</TabsTrigger>
@@ -317,6 +319,10 @@ function Index() {
             <div className="mt-4">
               <TopicPreview plan={e.plan} />
             </div>
+          </TabsContent>
+
+          <TabsContent value="mehrspur" className="mt-4">
+            <MultitrackPanel />
           </TabsContent>
 
           <TabsContent value="live" className="mt-4">

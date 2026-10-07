@@ -1,6 +1,9 @@
 import { buildPlan, urgentTrafficItems } from "@/lib/planner";
 import {
   MORNING_SLOT,
+  OVERLAY_DUCKING_DB,
+  OVERLAY_WORDS_MAX,
+  wordCount,
   TRAFFIC_POLL_MINUTES,
   regionalActionDays,
   screenAiText,
@@ -46,6 +49,7 @@ import {
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
+import { mixBed, mixOverlap } from "./mixer";
 import { listStoredMedia, getStoredFileBuffer } from "./media-store";
 import type { MediaRecord } from "@/lib/media-db";
 import { listScheduledShows } from "./scheduled-shows-store";
@@ -122,6 +126,8 @@ type EngineState = {
   /** Bereits als Sofort-Verkehrsmeldung angesagte Feed-/Hotline-IDs (Regel 3: "sofort"). */
   urgentAnnounced: Set<string>;
   urgentCheckedAt: number;
+  /** Mehrspur: uid des Elements, das gerade mit seinem Vorgänger gemischt wird. */
+  mixingUid: string | null;
   news: { items: NewsFeedItem[]; at: number };
   traffic: { items: TrafficFeedItem[]; at: number };
   /** Blitzer + Verkehr von Radio Salü/RPR1, abgeglichen mit der Datenbank. */
@@ -195,6 +201,7 @@ function getState(): EngineState {
     editorHolds: [],
     urgentAnnounced: new Set(),
     urgentCheckedAt: 0,
+    mixingUid: null,
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
     stationReports: { items: [], at: 0 },
@@ -597,8 +604,117 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
     item.kind,
     item.hostId,
   );
-  const { buffer, duration } = trimToAudio(raw, item.duration);
-  return { buffer, contentType: "audio/mpeg", duration };
+  const { buffer: voice, duration: voiceDuration } = trimToAudio(raw, item.duration);
+  // Mehrspur: Musikbett unter einem kurzen Callout (Regel 6) – schlägt das Mischen fehl, läuft
+  // die Ansage einfach ohne Bett.
+  if (item.bed) {
+    try {
+      const bedRaw = item.bed.mediaId
+        ? await getStoredFileBuffer(item.bed.mediaId)
+        : item.bed.streamUrl
+          ? await fetchBufferWithTimeout(rawStreamUrl(item.bed.streamUrl), 30_000)
+          : null;
+      if (bedRaw) {
+        const mixed = await mixBed({ voice, bed: trimToAudio(bedRaw, 0).buffer, bedDb: -12 });
+        const { buffer, duration } = trimToAudio(mixed, voiceDuration);
+        return { buffer, contentType: "audio/mpeg", duration };
+      }
+    } catch (err) {
+      console.error("[station-engine] Bett konnte nicht gemischt werden:", item.title, err);
+    }
+  }
+  return { buffer: voice, contentType: "audio/mpeg", duration: voiceDuration };
+}
+
+/** Darf ein Element sich über das vorige legen? Regel 4/6: nur Jingles/FX und kurze Callouts
+ *  (max. 5 Wörter) – nie Nachrichten, Verkehr, Warnungen, Werbung oder längere Sprache. */
+export function overlapAllowed(item: PlanItem): boolean {
+  if (item.civilWarning || item.trafficJingleAfterAnnouncement) return false;
+  if (item.kind === "jingle") return true;
+  if (item.kind === "slogan" || item.kind === "moderation") {
+    return (
+      Boolean(item.mediaId || item.streamUrl) || wordCount(item.text ?? "") <= OVERLAY_WORDS_MAX
+    );
+  }
+  return false;
+}
+
+/**
+ * Mehrspur-Mischung zur Laufzeit: Hat das nächste Element eine Überlappung, wird – solange das
+ * aktuelle noch weit genug vom Ende weg ist – das Ende des aktuellen abgeschnitten und unter den
+ * Anfang des nächsten gemischt (Song geduckt unter Callout, ausgeblendet unter Jingle). Läuft im
+ * Hintergrund; ist es zu spät, spielen beide einfach nacheinander.
+ */
+function tickMixing(state: EngineState) {
+  if (state.mixingUid) return;
+  const queue = activeQueue(state);
+  const current = queue[0];
+  const next = queue[1];
+  if (!current || !next || next.mixed || !next.overlapSeconds || state.currentStartedAt === null) {
+    return;
+  }
+  if (current.kind !== "music" || !overlapAllowed(next)) return;
+  const a = state.audioCache.get(current.uid);
+  const b = state.audioCache.get(next.uid);
+  if (!a || !b) return;
+  const remaining = current.duration - (Date.now() - state.currentStartedAt) / 1000;
+  if (remaining < next.overlapSeconds + 15) return;
+  state.mixingUid = next.uid;
+  mixOverlap({
+    under: a.buffer,
+    over: b.buffer,
+    overlapSeconds: next.overlapSeconds,
+    mode: next.kind === "jingle" ? "fade" : "duck",
+    duckDb: OVERLAY_DUCKING_DB,
+  })
+    .then((result) => {
+      if (!result) return;
+      const q = activeQueue(state);
+      // Nur übernehmen, wenn sich inzwischen nichts verschoben hat und der Live-Stream das Ende
+      // des aktuellen Elements noch nicht erreicht hat.
+      if (q[0]?.uid !== current.uid || q[1]?.uid !== next.uid || state.currentStartedAt === null)
+        return;
+      const left = current.duration - (Date.now() - state.currentStartedAt) / 1000;
+      if (left < result.overlapSeconds + 3) return;
+      const streamedShare =
+        state.streamingUid === current.uid ? state.streamedBytes / a.buffer.length : 0;
+      if (streamedShare * a.buffer.length > result.underTrimmed.length) return;
+      const newDuration = current.duration - result.overlapSeconds;
+      state.audioCache.set(current.uid, {
+        ...a,
+        buffer: result.underTrimmed,
+        duration: newDuration,
+      });
+      if (state.streamingUid === current.uid) {
+        state.streamedBytes = Math.floor(
+          (state.streamedBytes / a.buffer.length) * result.underTrimmed.length,
+        );
+      }
+      current.duration = newDuration;
+      const mixedDuration = analyzeMp3(result.overMixed).durationSeconds || next.duration;
+      state.audioCache.set(next.uid, { ...b, buffer: result.overMixed, duration: mixedDuration });
+      next.duration = mixedDuration;
+      next.mixed = true;
+      next.talkoverSeconds = undefined;
+    })
+    .catch((err) => console.error("[station-engine] Mehrspur-Mischung fehlgeschlagen:", err))
+    .finally(() => {
+      state.mixingUid = null;
+    });
+}
+
+/** Startzeiten nach einer Bearbeitung neu durchrechnen (inkl. Überlappungen). */
+function recalcTimes(state: EngineState) {
+  const queue = activeQueue(state);
+  const current = queue[0];
+  if (!current) return;
+  let t =
+    state.currentStartedAt !== null ? state.currentStartedAt + current.duration * 1000 : Date.now();
+  for (const item of queue.slice(1)) {
+    const overlap = item.mixed ? 0 : (item.overlapSeconds ?? 0);
+    item.plannedAt = t - overlap * 1000;
+    t = item.plannedAt + item.duration * 1000;
+  }
 }
 
 function ensureAudioPreparing(state: EngineState) {
@@ -710,7 +826,7 @@ function publishNowPlaying(state: EngineState) {
       subtitle: i.subtitle,
       duration: i.duration,
       introSeconds: introSecondsFor(i),
-      talkoverSeconds: i.talkoverSeconds,
+      talkoverSeconds: i.mixed ? undefined : i.talkoverSeconds,
       plannedAt: i.plannedAt,
     })),
     updatedAt: Date.now(),
@@ -895,6 +1011,7 @@ async function tick() {
 
     ensureAudioPreparing(state);
     advanceQueue(state);
+    tickMixing(state);
     streamLiveAudio(state);
     publishNowPlaying(state);
   } catch (err) {
@@ -1008,6 +1125,72 @@ export function getAudioByUid(uid: string): (AudioEntry & { uid: string }) | nul
   const state = getState();
   const entry = state.audioCache.get(uid);
   return entry ? { ...entry, uid } : null;
+}
+
+export type PlanEdit =
+  | { action: "move"; uid: string; beforeUid: string | null }
+  | { action: "overlap"; uid: string; seconds: number }
+  | { action: "bed"; uid: string; on: boolean }
+  | { action: "remove"; uid: string };
+
+/**
+ * Bearbeitung aus der Mehrspur-Ansicht. Das gerade laufende Element und harte Zeitmarken
+ * (Nachrichten) bleiben fest; Überlappung und Bett nur dort, wo die Regeln es erlauben.
+ */
+export function editPlan(edit: PlanEdit): { ok: true } | { ok: false; error: string } {
+  const state = getState();
+  const queue = [...activeQueue(state)];
+  const index = queue.findIndex((i) => i.uid === edit.uid);
+  if (index < 0) return { ok: false, error: "Element nicht (mehr) im Plan" };
+  if (index === 0) return { ok: false, error: "Das laufende Element kann nicht bearbeitet werden" };
+  const item = queue[index];
+  const invalidate = (i: PlanItem) => {
+    state.audioCache.delete(i.uid);
+    i.mixed = false;
+  };
+
+  if (edit.action === "remove") {
+    queue.splice(index, 1);
+    state.audioCache.delete(item.uid);
+  } else if (edit.action === "move") {
+    if (item.hardStart)
+      return { ok: false, error: "Feste Zeitmarken (Nachrichten) bleiben an ihrem Platz" };
+    queue.splice(index, 1);
+    const target = edit.beforeUid ? queue.findIndex((i) => i.uid === edit.beforeUid) : queue.length;
+    if (target === 0)
+      return { ok: false, error: "Vor das laufende Element kann nichts geschoben werden" };
+    queue.splice(target < 0 ? queue.length : target, 0, item);
+    // Überlappungen/Mischungen passen nach dem Verschieben nicht mehr zum neuen Nachbarn.
+    for (const i of queue.slice(1)) if (i.mixed) invalidate(i);
+  } else if (edit.action === "overlap") {
+    if (!overlapAllowed(item) && edit.seconds > 0) {
+      return { ok: false, error: "Überlappung nur für Jingles und kurze Callouts (max. 5 Wörter)" };
+    }
+    item.overlapSeconds = Math.max(0, Math.min(8, edit.seconds)) || undefined;
+    if (item.mixed) invalidate(item);
+  } else if (edit.action === "bed") {
+    if (edit.on) {
+      const spoken = Boolean(item.text) && !item.mediaId && !item.streamUrl;
+      if (!spoken || wordCount(item.text ?? "") > OVERLAY_WORDS_MAX || item.civilWarning) {
+        return { ok: false, error: "Ein Bett gibt es nur unter kurzen Ansagen (max. 5 Wörter)" };
+      }
+      const beds = state.media.items.filter((m) => m.kind === "jingle" && m.slot === "bett");
+      if (!beds.length)
+        return { ok: false, error: "Keine Musikbetten in der Bibliothek (Slot „Musikbett“)" };
+      const b = beds[Math.floor(Math.random() * beds.length)];
+      item.bed = {
+        mediaId: b.streamUrl ? undefined : b.id,
+        streamUrl: b.streamUrl,
+        title: b.title,
+      };
+    } else {
+      item.bed = undefined;
+    }
+    invalidate(item);
+  }
+  setActiveQueue(state, queue);
+  recalcTimes(state);
+  return { ok: true };
 }
 
 /** Studio-Steuerung: das aktuelle Element der echten Sendung sofort beenden und weiterschalten

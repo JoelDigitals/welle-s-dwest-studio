@@ -101,3 +101,24 @@ export function analyzeMp3(buf: Buffer): Mp3Analysis {
   }
   return { audioStart, audioEnd: end, durationSeconds: seconds };
 }
+
+export type Mp3Frame = { offset: number; size: number; seconds: number };
+
+/** Alle MPEG-Frames einer (bereits ID3-bereinigten) MP3-Datei – Grundlage für framegenaues
+ *  Schneiden im Mehrspur-Mischer (mixer.ts), ohne die ganze Datei neu zu kodieren. */
+export function mp3Frames(buf: Buffer): Mp3Frame[] {
+  const { audioStart } = analyzeMp3(buf);
+  const frames: Mp3Frame[] = [];
+  let offset = audioStart;
+  while (offset + 4 <= buf.length) {
+    const frame = parseFrame(buf, offset);
+    if (!frame) break;
+    frames.push({
+      offset,
+      size: frame.frameSize,
+      seconds: frame.samplesPerFrame / frame.sampleRate,
+    });
+    offset += frame.frameSize;
+  }
+  return frames;
+}

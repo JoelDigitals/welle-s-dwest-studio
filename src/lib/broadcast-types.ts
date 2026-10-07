@@ -109,6 +109,14 @@ export type PlanItem = {
   };
   /** Regel 4: wichtige Verkehrsmeldung – Jingle erst NACH der Ansage, keine Musik darunter. */
   trafficJingleAfterAnnouncement?: boolean;
+  /** Mehrspur-Studio: Spur des Elements (Musik, Sprache, Jingle/FX). Das Bett hängt an "bed". */
+  track?: "music" | "voice" | "fx";
+  /** Mehrspur: Element beginnt so viele Sekunden vor dem Ende des vorigen (Überlappung). */
+  overlapSeconds?: number;
+  /** Mehrspur: Musikbett unter diesem Element (nur unter kurzen Callouts, Regel 6). */
+  bed?: { mediaId?: string; streamUrl?: string; title: string };
+  /** Von der Sende-Engine bereits mit dem vorigen Element zusammengemischt (mixer.ts). */
+  mixed?: boolean;
 };
 
 export type NewsFeedItem = {

@@ -70,6 +70,8 @@ function talkoverSecondsFor(speechDuration: number): number {
  *  statt nur eines kurzen, sauberen Schnitts – "nur bei bestimmten Situationen", nicht bei jedem
  *  einzelnen Songende, sonst klingt es schnell aufgesetzt/formelhaft. */
 const TALKOVER_CHANCE = 0.35;
+/** Mehrspur: so weit läuft ein Station-Element über den Ausklang des vorigen Songs. */
+const JINGLE_OVERLAP_SECONDS = 1.5;
 
 /** Uhrzeit so, wie sie im Radio gesprochen wird: „11 Uhr 45“, „12 Uhr“. Immer deutsche Ortszeit,
  *  unabhängig von der Zeitzone des Servers (Cloud-Hosting läuft oft in UTC). */
@@ -1115,14 +1117,7 @@ const SMALLTALK = [
 /* ------------------------------------------------- Themen-Checkliste */
 
 export type TopicCat =
-  | "kultur"
-  | "netz"
-  | "witziges"
-  | "service"
-  | "region"
-  | "musik"
-  | "hoerer"
-  | "nacht";
+  "kultur" | "netz" | "witziges" | "service" | "region" | "musik" | "hoerer" | "nacht";
 
 /** Diese vier Rubriken müssen tagsüber in jeder Moderationsrunde vorkommen. */
 const CHECKLIST: TopicCat[] = ["kultur", "netz", "witziges", "service"];
@@ -1643,6 +1638,7 @@ export function urgentTrafficItems(
     plannedAt: at,
     status: "idle",
     trafficJingleAfterAnnouncement: true,
+    track: "voice",
     meta: { ...metaFor(sources), ts: new Date(at).toISOString(), tts: true },
   };
   const items: PlanItem[] = [speech];
@@ -1662,6 +1658,7 @@ export function urgentTrafficItems(
       plannedAt: jAt,
       status: "idle",
       showId: show.id,
+      track: "fx",
       meta: { ...metaFor([]), ts: new Date(jAt).toISOString() },
     });
   }
@@ -1685,6 +1682,18 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
   const allJingles = mediaOf(ctx.media, "jingle", "stundenanfang");
   const allNewsJingles = mediaOf(ctx.media, "jingle", "nachrichten");
   const allSlogans = mediaOf(ctx.media, "slogan", "allgemein");
+  const allBeds = mediaOf(ctx.media, "jingle", "bett");
+  /** Mehrspur-Bett: nur unter sehr kurzen Callouts (Regel 6 – keine Musik unter längerer
+   *  Sprache), nie unter Nachrichten, Verkehr, Warnungen oder Werbung. */
+  const bedFor = (kind: ItemKind, text: string, extra?: Partial<PlanItem>) => {
+    if (!allBeds.length || extra?.civilWarning) return null;
+    if (kind !== "slogan" && kind !== "moderation") return null;
+    if (wordCount(text) > OVERLAY_WORDS_MAX) return null;
+    const b = allBeds[Math.floor(Math.random() * allBeds.length)];
+    return {
+      bed: { mediaId: b.streamUrl ? undefined : b.id, streamUrl: b.streamUrl, title: b.title },
+    };
+  };
   const artistPlays = new Map<string, number>();
   const usedModeration = new Set<string>();
   /** Bereits verwendete Witze, Smalltalks und Rubriktexte im Plan. */
@@ -1732,7 +1741,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       item: Omit<PlanItem, "uid" | "plannedAt" | "status">,
       at?: number,
     ): PlanItem | null => {
-      const plannedAt = at ?? cursor;
+      // Mehrspur: ein überlappendes Element startet entsprechend früher (vor dem Ende des vorigen).
+      const plannedAt = (at ?? cursor) - (at === undefined ? (item.overlapSeconds ?? 0) * 1000 : 0);
       if (plannedAt >= hourEnd) return null;
       // Nie rückwirkend planen – der Plan beginnt immer ab jetzt.
       if (plannedAt < firstHour - 1000) return null;
@@ -1749,6 +1759,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         // ohne das würde hier immer wieder die Sendungsmoderation eingesetzt.
         hostId: item.hostId ?? host.id,
         hostName: item.hostName ?? host.name,
+        track:
+          item.track ??
+          (item.kind === "music" ? "music" : item.mediaId || item.streamUrl ? "fx" : "voice"),
         // Regel 11: jede Ausgabe trägt auto_generated, sources, ts und editor_needed; Regel 9:
         // TTS-Ausgaben (Text ohne Audiodatei) sind als solche markiert.
         meta: {
@@ -1794,6 +1807,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         needsApproval: approval,
         approved: !approval,
         talkoverSeconds,
+        ...(talkoverSeconds ? { overlapSeconds: talkoverSeconds } : {}),
+        ...(bedFor(kind, text, extra) ?? {}),
         ...(talkoverSeconds
           ? {
               overlay: {
@@ -1914,6 +1929,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         : null;
       if (j) {
         lastHourJingleId = j.id;
+        // Mehrspur: ein Station-Element direkt nach einem Song startet über dessen Ausklang
+        // (FX-Spur, Song wird darunter ausgeblendet) – wie in echter Radio-Software.
+        const afterSong = items[items.length - 1]?.kind === "music";
         push({
           kind: "jingle",
           title: j.title,
@@ -1922,6 +1940,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           mediaId: j.streamUrl ? undefined : j.id,
           streamUrl: j.streamUrl,
           sponsor: null,
+          track: "fx",
+          ...(afterSong ? { overlapSeconds: JINGLE_OVERLAP_SECONDS } : {}),
         });
         return;
       }

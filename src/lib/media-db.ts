@@ -23,7 +23,7 @@ export type MediaRecord = {
   perHour?: number;
   sponsorOf?: "wetter" | "verkehr" | "nachrichten" | null;
   /** Zuordnung von Jingles/Slogans zu einem Programmplatz */
-  slot?: "stundenanfang" | "nachrichten" | "verkehr" | "wetter" | "werbung" | "allgemein" | null;
+  slot?: "stundenanfang" | "nachrichten" | "verkehr" | "wetter" | "werbung" | "allgemein" | "bett" | null;
   /** Wiederkehrendes Zeitfenster (zusätzlich zum optionalen Datumsbereich runFrom/runUntil oben) -
    *  an welchen Wochentagen (0=So..6=Sa) und zwischen welchen Uhrzeiten (Berliner Ortszeit, "HH:MM")
    *  dieses Element laufen darf, z. B. ein Jingle nur werktags von 6 bis 9 Uhr. Jeweils leer/

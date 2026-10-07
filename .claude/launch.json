@@ -4,8 +4,20 @@
     {
       "name": "welle-suedwest-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "render-build-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--env-file=.env",
+        ".output/server/index.mjs"
+      ],
+      "port": 3000
     }
   ]
 }

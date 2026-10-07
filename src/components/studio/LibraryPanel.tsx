@@ -29,6 +29,7 @@ const SLOTS: Array<{ id: NonNullable<MediaRecord["slot"]>; label: string }> = [
   { id: "verkehr", label: "Vor dem Verkehr" },
   { id: "wetter", label: "Vor dem Wetter" },
   { id: "werbung", label: "Vor der Werbung" },
+  { id: "bett", label: "Musikbett (Mehrspur, unter kurzen Ansagen)" },
 ];
 
 /** Jingles/Slogans dürfen wie Werbung einen Zeitraum bekommen (z. B. nur zur Adventszeit oder für
@@ -340,7 +341,9 @@ export function LibraryPanel({
 
       <section className="panel space-y-3 p-5">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="display text-xl">Bibliothek ({filteredMedia.length}/{media.length})</h3>
+          <h3 className="display text-xl">
+            Bibliothek ({filteredMedia.length}/{media.length})
+          </h3>
         </div>
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -534,7 +537,9 @@ function MediaRow({
         <p className="truncate text-xs text-muted-foreground">
           {KINDS.find((k) => k.id === m.kind)?.label} · {m.artist || m.category} ·{" "}
           {formatClock(m.duration)}
-          {m.slot && m.slot !== "allgemein" ? ` · ${SLOTS.find((s) => s.id === m.slot)?.label}` : ""}
+          {m.slot && m.slot !== "allgemein"
+            ? ` · ${SLOTS.find((s) => s.id === m.slot)?.label}`
+            : ""}
           {m.runFrom || m.runUntil
             ? ` · ${dateInputValue(m.runFrom) || "…"} – ${dateInputValue(m.runUntil) || "…"}`
             : ""}

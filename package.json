@@ -53,6 +53,7 @@
     "input-otp": "^1.4.2",
     "lamejs": "^1.2.1",
     "lucide-react": "^0.575.0",
+    "mpg123-decoder": "^1.0.3",
     "postgres": "^3.4.9",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",
