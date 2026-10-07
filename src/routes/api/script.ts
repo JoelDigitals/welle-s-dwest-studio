@@ -7,6 +7,7 @@ import {
   tryHumanizeNews,
 } from "@/lib/server/moderation-text";
 import { requireAuth } from "@/lib/server/auth";
+import { screenAiText } from "@/lib/station-rules";
 
 type Body = {
   kind?: string;
@@ -49,7 +50,19 @@ export const Route = createFileRoute("/api/script")({
                       hostName: body.hostName,
                       brief,
                     });
-          return Response.json({ text });
+          // Interne Redaktions-Marker nie an die Oberfläche/in die Sprachausgabe durchreichen,
+          // sondern als Metadaten melden (Regel 11/14).
+          const screened = screenAiText(text);
+          return Response.json({
+            text: screened.text,
+            meta: {
+              auto_generated: true,
+              sources: [],
+              ts: new Date().toISOString(),
+              editor_needed: screened.editorNeeded || screened.sourceMissing,
+              source_missing: screened.sourceMissing,
+            },
+          });
         } catch (err) {
           if (err instanceof AiError) {
             return Response.json({ error: err.message }, { status: err.status });

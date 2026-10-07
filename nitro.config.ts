@@ -42,6 +42,7 @@ const ENGINE_ORIGIN = (
 // options.createConnection option is not implemented"), Bibliotheks-Uploads (liegen im Dateisystem
 // des Render-Servers, wo die Engine sie liest) und der Musik-Proxy (puffert komplette MP3s).
 const ENGINE_ROUTES = [
+  "/api/production",
   "/api/tts",
   "/api/media",
   "/api/audio",

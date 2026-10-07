@@ -1,4 +1,5 @@
 import type { MediaRecord } from "./media-db";
+import type { ProductionMeta } from "./station-rules";
 
 export type ItemKind =
   | "music"
@@ -94,6 +95,20 @@ export type PlanItem = {
    *  wird (siehe crossfadeWindow in use-live-broadcast.ts). Ohne dieses Feld gibt es nur einen
    *  kurzen technischen Schnitt, keinen echten Talkover-Effekt. */
   talkoverSeconds?: number;
+  /** Regel 11 (station-rules.ts): auto_generated, sources, ts, editor_needed, tts. */
+  meta?: ProductionMeta;
+  /** Regel 13: Platz, an dem Moderator:innen Songs/Jingles flexibel einstreuen können. */
+  songSlot?: boolean;
+  /** Regel 6: Musik/Jingle läuft unter einem sehr kurzen Callout (max. 5 Wörter). */
+  overlay?: {
+    overlay: true;
+    overlay_duration_s: number;
+    overlay_words_max: number;
+    ducking_db: number;
+    voice_priority: true;
+  };
+  /** Regel 4: wichtige Verkehrsmeldung – Jingle erst NACH der Ansage, keine Musik darunter. */
+  trafficJingleAfterAnnouncement?: boolean;
 };
 
 export type NewsFeedItem = {

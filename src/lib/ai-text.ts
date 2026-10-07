@@ -5,6 +5,8 @@
  * gerade ausgeschöpft oder das Modell überlastet ist.
  */
 
+import { STATION_RULES, STATION_RULES_JSON } from "./station-rules";
+
 export class AiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -100,6 +102,13 @@ export async function generateText(
   if (!geminiKey && !groqKey) {
     throw new AiError("AI ist nicht konfiguriert. GEMINI_API_KEY oder GROQ_API_KEY fehlt.", 500);
   }
+
+  // Regelwerk der Produktion (station-rules.ts) gilt für JEDEN KI-Aufruf – Studio wie Autopilot.
+  opts = {
+    ...opts,
+    system: `${opts.system}
+${opts.json ? STATION_RULES_JSON : STATION_RULES}`,
+  };
 
   const attempts: string[] = [];
 

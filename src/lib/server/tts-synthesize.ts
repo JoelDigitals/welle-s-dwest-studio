@@ -27,16 +27,20 @@ const DEFAULT_VOICE = "Achird";
 const EDGE_VOICE_MAP: Record<string, string> = {
   onyx: "de-DE-ConradNeural",
   shimmer: "de-DE-KatjaNeural",
-  alloy: "de-DE-FlorianMultilingualNeural",
+  // Regel 9 (station-rules.ts): keine "Multilingual"-Stimmen – die klingen gelegentlich
+  // US-englisch gefärbt. Stattdessen eine rein deutsche Stimme mit eigener Tonhöhe (EDGE_VOICE_PITCH).
+  alloy: "de-DE-ConradNeural",
   nova: "de-DE-AmalaNeural",
   echo: "de-DE-KillianNeural",
-  coral: "de-DE-SeraphinaMultilingualNeural",
+  coral: "de-DE-KatjaNeural",
   ash: "de-AT-JonasNeural",
   sage: "de-AT-IngridNeural",
   ballad: "de-CH-JanNeural",
   verse: "de-CH-LeniNeural",
 };
 const DEFAULT_EDGE_VOICE = "de-DE-KatjaNeural";
+/** Grund-Tonhöhe (Hz) für Stimmen-IDs, die sich seit Regel 9 eine deutsche Basisstimme teilen. */
+const EDGE_VOICE_PITCH: Record<string, number> = { alloy: -14, coral: 14 };
 /** Leichte Prosodie-Anpassung pro Rubrik (Edge-TTS kennt keine Freitext-Regieanweisungen). */
 const EDGE_RATE: Record<string, string> = {
   traffic: "+8%",
@@ -132,7 +136,10 @@ async function synthesizeWithEdgeTts(
   const voice = EDGE_VOICE_MAP[voiceId] ?? DEFAULT_EDGE_VOICE;
   const rate = EDGE_RATE[style] ?? "+0%";
   const volume = EDGE_VOLUME[style] ?? "+0%";
-  const pitch = (personaId && PERSONA_PITCH[personaId]) || undefined;
+  const pitchHz =
+    (EDGE_VOICE_PITCH[voiceId] ?? 0) +
+    Number.parseInt((personaId && PERSONA_PITCH[personaId]) || "0", 10);
+  const pitch = pitchHz ? `${pitchHz > 0 ? "+" : ""}${pitchHz}Hz` : undefined;
   const tts = new EdgeTTS(text, voice, pitch ? { rate, volume, pitch } : { rate, volume });
   const result = await tts.synthesize();
   return Buffer.from(await result.audio.arrayBuffer());

@@ -23,6 +23,7 @@ import { Route as ApiTrafficRouteImport } from './routes/api/traffic'
 import { Route as ApiStreamhealthRouteImport } from './routes/api/streamhealth'
 import { Route as ApiScriptRouteImport } from './routes/api/script'
 import { Route as ApiScheduledShowsRouteImport } from './routes/api/scheduled-shows'
+import { Route as ApiProductionRouteImport } from './routes/api/production'
 import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiMicStreamRouteImport } from './routes/api/mic-stream'
@@ -116,6 +117,11 @@ const ApiScriptRoute = ApiScriptRouteImport.update({
 const ApiScheduledShowsRoute = ApiScheduledShowsRouteImport.update({
   id: '/api/scheduled-shows',
   path: '/api/scheduled-shows',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiProductionRoute = ApiProductionRouteImport.update({
+  id: '/api/production',
+  path: '/api/production',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiNewsroomRoute = ApiNewsroomRouteImport.update({
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/api/mic-stream': typeof ApiMicStreamRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
+  '/api/production': typeof ApiProductionRoute
   '/api/scheduled-shows': typeof ApiScheduledShowsRoute
   '/api/script': typeof ApiScriptRoute
   '/api/streamhealth': typeof ApiStreamhealthRoute
@@ -301,6 +308,7 @@ export interface FileRoutesByTo {
   '/api/mic-stream': typeof ApiMicStreamRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
+  '/api/production': typeof ApiProductionRoute
   '/api/scheduled-shows': typeof ApiScheduledShowsRoute
   '/api/script': typeof ApiScriptRoute
   '/api/streamhealth': typeof ApiStreamhealthRoute
@@ -342,6 +350,7 @@ export interface FileRoutesById {
   '/api/mic-stream': typeof ApiMicStreamRoute
   '/api/news': typeof ApiNewsRoute
   '/api/newsroom': typeof ApiNewsroomRoute
+  '/api/production': typeof ApiProductionRoute
   '/api/scheduled-shows': typeof ApiScheduledShowsRoute
   '/api/script': typeof ApiScriptRoute
   '/api/streamhealth': typeof ApiStreamhealthRoute
@@ -384,6 +393,7 @@ export interface FileRouteTypes {
     | '/api/mic-stream'
     | '/api/news'
     | '/api/newsroom'
+    | '/api/production'
     | '/api/scheduled-shows'
     | '/api/script'
     | '/api/streamhealth'
@@ -424,6 +434,7 @@ export interface FileRouteTypes {
     | '/api/mic-stream'
     | '/api/news'
     | '/api/newsroom'
+    | '/api/production'
     | '/api/scheduled-shows'
     | '/api/script'
     | '/api/streamhealth'
@@ -464,6 +475,7 @@ export interface FileRouteTypes {
     | '/api/mic-stream'
     | '/api/news'
     | '/api/newsroom'
+    | '/api/production'
     | '/api/scheduled-shows'
     | '/api/script'
     | '/api/streamhealth'
@@ -505,6 +517,7 @@ export interface RootRouteChildren {
   ApiMicStreamRoute: typeof ApiMicStreamRoute
   ApiNewsRoute: typeof ApiNewsRoute
   ApiNewsroomRoute: typeof ApiNewsroomRoute
+  ApiProductionRoute: typeof ApiProductionRoute
   ApiScheduledShowsRoute: typeof ApiScheduledShowsRoute
   ApiScriptRoute: typeof ApiScriptRoute
   ApiStreamhealthRoute: typeof ApiStreamhealthRoute
@@ -623,6 +636,13 @@ declare module '@tanstack/react-router' {
       path: '/api/scheduled-shows'
       fullPath: '/api/scheduled-shows'
       preLoaderRoute: typeof ApiScheduledShowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/production': {
+      id: '/api/production'
+      path: '/api/production'
+      fullPath: '/api/production'
+      preLoaderRoute: typeof ApiProductionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/newsroom': {
@@ -817,6 +837,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMicStreamRoute: ApiMicStreamRoute,
   ApiNewsRoute: ApiNewsRoute,
   ApiNewsroomRoute: ApiNewsroomRoute,
+  ApiProductionRoute: ApiProductionRoute,
   ApiScheduledShowsRoute: ApiScheduledShowsRoute,
   ApiScriptRoute: ApiScriptRoute,
   ApiStreamhealthRoute: ApiStreamhealthRoute,

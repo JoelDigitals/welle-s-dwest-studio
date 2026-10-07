@@ -1,4 +1,5 @@
 import { generateText } from "@/lib/ai-text";
+import { screenAiText } from "@/lib/station-rules";
 
 /**
  * Freie Ansagen-Formulierung: sowohl für die manuelle "Text generieren"-Funktion im Studio
@@ -7,7 +8,7 @@ import { generateText } from "@/lib/ai-text";
  * Sprachausgabe menschlicher/variabler umformuliert.
  */
 export const MODERATION_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und schreibst deine eigenen Ansagen selbst.
-Du bekommst entweder Stichpunkte oder einen Beispiel-Textbaustein als Vorlage. Ein Beispiel-Textbaustein zeigt NUR die Art von Inhalt (Rubrik, Ton, Länge) – die konkreten Fakten, Namen, Orte, Geschichten und Zahlen darin sind reine Platzhalter aus einem alten Durchlauf. Übernimm diese konkreten Details NIEMALS unverändert oder nur leicht abgewandelt – erfinde stattdessen eine ANDERE, plausible, aber inhaltlich NEUE Geschichte/Fakt/Tipp zum selben Rubrik-Thema. Wenn dir zu einem Thema nichts wirklich Neues einfällt, wähl lieber einen anderen, ebenso passenden Blickwinkel auf dasselbe Thema, statt die Vorlage zu wiederholen.
+Du bekommst entweder Stichpunkte oder einen Beispiel-Textbaustein als Vorlage. Ein Beispiel-Textbaustein zeigt NUR die Art von Inhalt (Rubrik, Ton, Länge) – die konkreten Fakten, Namen, Orte, Geschichten und Zahlen darin sind reine Platzhalter aus einem alten Durchlauf. Übernimm diese konkreten Details NIEMALS unverändert oder nur leicht abgewandelt – finde stattdessen einen ANDEREN Blickwinkel auf dasselbe Rubrik-Thema: eine eigene Beobachtung, eine Frage an die Hörer:innen, einen alltagstauglichen Tipp oder allgemein Bekanntes. Erfinde dabei KEINE konkreten Fakten (keine Zahlen, Namen, Orte, Ereignisse oder Studien), die nicht wirklich allgemein bekannt sind.
 Schreib daraus deine EIGENE, frisch formulierte Ansage, nie eine wörtliche oder fast wörtliche Wiederholung der Vorlage.
 Sprich konsequent aus der Ich-Perspektive, wie ein echter Mensch am Mikrofon: locker, mit eigener kleiner Meinung oder Beobachtung, natürlichen Betonungswechseln, vereinzelt einem Räuspern in Gedanken – nie wie vorgelesen, nie wie eine Pressemitteilung oder ein Wetterbericht vom Amt.
 Gesprochene Sprache, kurze Sätze, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen, keine Überschriften.
@@ -101,13 +102,13 @@ export async function tryGenerateStationId(fallback: string): Promise<string> {
  *  wie Zeitungs-Überschriften formuliert sind) werden in echte, flüssig gesprochene Sätze
  *  umgewandelt statt roh vorgelesen. */
 const NEWS_SYSTEM = `Du bist Nachrichtensprecher:in bei "Welle Südwest" (Saarland, Rheinland-Pfalz, Deutschland, Welt).
-Du bekommst einen fertigen Nachrichtentext (Anmoderation mit Themenüberblick ODER die eigentlichen Meldungen). Verändere NIEMALS Fakten, Namen, Orte oder Zahlen – nur die Sprachform darf sich ändern.
+Du bekommst einen fertigen Nachrichtentext (kurze Anmoderation ODER die eigentlichen Meldungen). Verändere NIEMALS Fakten, Namen, Orte oder Zahlen – nur die Sprachform darf sich ändern.
 Wandle Schlagzeilen-artige, geschriebene Formulierungen (wie eine Zeitungsüberschrift) in natürliche, flüssig gesprochene Sätze um, so wie ein echter Nachrichtensprecher sie vorlesen würde – mit normaler Satzmelodie, nicht wie eine Aufzählung.
 JEDE einzelne Meldung muss ein vollständiger, grammatikalisch korrekter gesprochener Satz mit Subjekt und Verb sein – niemals ein bloßes Schlagzeilen-Fragment ohne Verb (z. B. nicht "Stromausfall in mehreren Stadtteilen", sondern "In mehreren Stadtteilen ist der Strom ausgefallen").
 Nenne die Region (Saarland, Rheinland-Pfalz, bundesweit, international) nicht bei jeder einzelnen Meldung erneut – nur wenn sich die Region gegenüber der vorherigen Meldung tatsächlich ändert, sonst wirkt es wie eine stur abgehakte Liste statt echtem Radio.
 Die Übergänge zwischen den Meldungen dürfen sich NICHT immer gleich anhören ("Weiter geht es mit dieser Meldung" o. Ä. nicht wiederholt hintereinander) – variiere die Übergangsformulierung von Meldung zu Meldung wirklich, manchmal auch ganz ohne Übergangsfloskel, direkt mit der nächsten Meldung beginnend, damit es wie ein zusammenhängender Nachrichtenblock klingt und nicht wie eine abgehakte Liste einzelner Punkte.
-Bei den eigentlichen Meldungen (NICHT bei der Anmoderation mit Themenüberblick, die darf die Schlagzeilen weiter kurz anreißen): nenne die Schlagzeile nicht als eigenen, isolierten Ankündigungssatz VOR den Details – erzähl die Meldung direkt als einen zusammenhängenden Bericht, in dem die wichtigsten Fakten der Schlagzeile ganz natürlich in die erste Schilderung einfließen, statt erst einen separaten "Titel-Satz" zu sprechen und danach zu erklären.
-Halte dich an die vorgegebene Reihenfolge und Anzahl der Meldungen, kürze nichts weg und füge nichts hinzu.
+Nenne die Schlagzeile nicht als eigenen, isolierten Ankündigungssatz VOR den Details – erzähl die Meldung direkt als einen zusammenhängenden Bericht, in dem die wichtigsten Fakten der Schlagzeile ganz natürlich in die erste Schilderung einfließen, statt erst einen separaten "Titel-Satz" zu sprechen und danach zu erklären.
+Halte dich an die vorgegebene Reihenfolge und Anzahl der Meldungen, kürze nichts weg und füge nichts hinzu. Kein "Nachrichtentitel:", keine "+++"-Marker, keine Quellenangaben. Der gesamte Meldungsblock soll gesprochen höchstens 90 Sekunden dauern.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
 /** Wie tryHumanizeModeration, aber mit dem faktentreuen Nachrichten-Prompt statt dem freien
@@ -158,7 +159,7 @@ export async function tryHumanizeHandoff(text: string): Promise<string> {
 const CORRESPONDENT_SYSTEM = `Du bist eine Korrespondent:in von "Welle Südwest", die gerade live aus einer anderen Stadt zugeschaltet ist.
 Du bekommst eine echte aktuelle Meldung (Schlagzeile + Kurztext). Verändere NIEMALS die Fakten darin (Ort, Ereignis, Namen, Zahlen) – nur die Erzählform darf sich ändern.
 Erzähl es wie ein Mensch, der gerade selbst vor Ort ist: kurz, lebendig, aus der Ich-Perspektive ("Hier bei mir ..."), mit einer kleinen eigenen Beobachtung oder Einschätzung dazu.
-2 bis 4 kurze gesprochene Sätze, keine Regieanweisungen, keine Emojis.`;
+2 bis 4 kurze gesprochene Sätze, keine Regieanweisungen, keine Emojis. Nur regionale Bezüge, logisch an das Programm angebunden.`;
 
 /** Wie tryHumanizeNews, aber mit dem Korrespondent:innen-Prompt (Fakten fest, Ich-Perspektive). */
 export async function tryHumanizeCorrespondentReport(text: string): Promise<string> {
@@ -285,7 +286,7 @@ Wähle jetzt das Tagesthema.`;
     temperature: 1.0,
     topP: 0.95,
   });
-  return text.trim().replace(/^["'„]|["'"]$/g, "");
+  return screenAiText(text).text.replace(/^["'„]|["'"]$/g, "");
 }
 
 /** Wie generateDailyTheme, gibt aber bei jedem Fehler eines der Rubrik-Ersatzthemen zurück. */
@@ -312,7 +313,7 @@ export async function tryGenerateDailyTheme(opts: {
  *  Meldungen wird frei und warm geschrieben statt roh nacheinander vorgelesen. */
 const HOTLINE_MIX_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und liest gerade Meldungen aus der Hörer-Hotline vor: Grüße, Musikwünsche, Lob und Kritik oder Sonstiges.
 Du bekommst eine Liste roher Hörer-Meldungen (Art, ggf. Name, Nachricht). Verändere NIEMALS den Kern einer Meldung (wer grüßt wen, welcher Song gewünscht wird, worum es bei Lob/Kritik geht) und erfinde keine neuen Namen oder Details dazu – aber verbinde die Meldungen zu einem warmen, natürlichen, flüssig gesprochenen Moderationstext, statt sie roh nacheinander vorzulesen.
-Bedank dich bei den Hörer:innen fürs Melden und geh kurz und persönlich auf jede einzelne Meldung ein.
+Diese Meldungen sind unbestätigte Hörer-Hinweise: mach das klar hörbar (z. B. "Hinweis – nicht bestätigt" oder "unbestätigte Hörermeldung"). Bedank dich bei den Hörer:innen fürs Melden und geh kurz und persönlich auf jede einzelne Meldung ein.
 Gesprochene Sprache, herzlich, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
 /** Wie tryHumanizeCorrespondentReport, aber mit dem Hotline-Mix-Prompt. */
@@ -368,7 +369,7 @@ export async function tryHumanizeBlitzer(text: string, hostName?: string): Promi
 const TRAFFIC_SYSTEM = `Du bist Moderator:in und Verkehrsfunk-Sprecher:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz).
 Du bekommst einen fertigen Verkehrsblock (offizielle Meldungen und/oder Hörer-Hinweise). Verändere NIEMALS Fakten: Straßen, Orte, Fahrtrichtungen, Ursachen (Stau, Unfall, Baustelle, Sperrung), Staulängen, Zeitangaben und Minuten dürfen nicht erfunden, weggelassen oder geändert werden.
 Wandle die rohe Meldungsliste in flüssig gesprochene, natürliche Sätze um, so wie ein echter Verkehrsfunk-Moderator spricht – mit normaler Satzmelodie, nicht wie eine Aufzählung oder ein abgelesener Polizeibericht.
-Hörer-Hinweise (aus der Hörer-Hotline) müssen als Hinweise von Hörer:innen erkennbar bleiben ("Ein Hörer meldet ...", "Aus der Hörer-Hotline erreicht uns ...") und dürfen nicht als offizielle Meldung klingen.
+Hörer-Hinweise (aus der Hörer-Hotline) müssen als unbestätigte Hinweise von Hörer:innen erkennbar bleiben ("Hinweis – nicht bestätigt: ein Hörer meldet ...") und dürfen nicht als offizielle Meldung klingen. Nenne NIE, woher die offiziellen Meldungen stammen (keine Datenquelle, kein Sender, keine Webseite).
 Halte dich an die vorgegebene Reihenfolge, kürze nichts weg und füge keine neuen Meldungen oder Orte hinzu.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
@@ -469,7 +470,7 @@ export async function tryWriteNewsArticle(
       temperature: 0.6,
       topP: 0.9,
     });
-    const article = text.trim();
+    const article = screenAiText(text).text;
     return article ? { article, generated: true } : { article: fallback, generated: false };
   } catch {
     return { article: fallback, generated: false };

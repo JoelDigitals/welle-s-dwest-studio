@@ -109,6 +109,35 @@ export function OutputPanel({ current }: { current: OnAirItem }) {
 
       <section className="panel space-y-3 p-5 lg:col-span-2">
         <h3 className="display flex items-center gap-2 text-xl">
+          <Radio className="size-5 text-primary" /> Produktions-Export
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Der aktuelle Sendeplan nach dem Produktions-Regelwerk: JSON-Timeline mit Metadaten
+          (Quellen, Zeitstempel, editor_needed), kompaktes Live-Cue für die Moderation und das
+          lesbare Skript. Zurückgehaltene Elemente und uneindeutige Hörermeldungen stehen jeweils
+          unten in der Redaktions-Liste.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" asChild>
+            <a href="/api/production?format=json" target="_blank" rel="noreferrer">
+              JSON-Timeline
+            </a>
+          </Button>
+          <Button variant="secondary" asChild>
+            <a href="/api/production?format=cue" target="_blank" rel="noreferrer">
+              Live-Cue
+            </a>
+          </Button>
+          <Button variant="secondary" asChild>
+            <a href="/api/production?format=script" target="_blank" rel="noreferrer">
+              Skript
+            </a>
+          </Button>
+        </div>
+      </section>
+
+      <section className="panel space-y-3 p-5 lg:col-span-2">
+        <h3 className="display flex items-center gap-2 text-xl">
           <Radio className="size-5 text-primary" /> Eigener kostenloser Dauer-Stream
         </h3>
         <p className="text-sm text-muted-foreground">

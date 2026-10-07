@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { generateText, AiError } from "@/lib/ai-text";
+import { stripNewsTitleMarkers } from "@/lib/station-rules";
 import { requireAuth } from "@/lib/server/auth";
 
 type Body = {
@@ -66,7 +67,7 @@ export const Route = createFileRoute("/api/newsroom")({
           };
           return Response.json({
             selection: Array.isArray(parsed.selection) ? parsed.selection : [],
-            script: typeof parsed.script === "string" ? parsed.script : "",
+            script: typeof parsed.script === "string" ? stripNewsTitleMarkers(parsed.script) : "",
           });
         } catch {
           return Response.json({ selection: [], script: raw });

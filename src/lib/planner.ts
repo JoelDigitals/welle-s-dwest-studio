@@ -34,6 +34,17 @@ import {
   berlinWeekday,
 } from "./berlin-time";
 import { weatherCodeToSky } from "./weather-codes";
+import {
+  NO_TRAFFIC_FALLBACK,
+  OVERLAY_DUCKING_DB,
+  REGIONAL_RELEVANCE,
+  OVERLAY_WORDS_MAX,
+  UNCONFIRMED,
+  isRushMinute,
+  stripNewsTitleMarkers,
+  wordCount,
+  type ProductionMeta,
+} from "./station-rules";
 
 let counter = 0;
 const uid = () => `p${++counter}-${Math.random().toString(36).slice(2, 8)}`;
@@ -72,7 +83,7 @@ const clockLine = (at: number) => berlinClock(at);
 
 /** Quellenangaben (Sender/Agenturen) werden im Sprechtext nie genannt. */
 const SOURCE_WORDS =
-  /\b(ARD|ZDF|SWR|SR|tagesschau|Tagesschau|dpa|DPA|Reuters|AFP|epd|KNA|sol\.de|SOL|Blaulichtreport|SR\s?3|SWR\s?Aktuell|Quelle:?)\b/g;
+  /\b(ARD|ZDF|SWR|SR|tagesschau|Tagesschau|dpa|DPA|Reuters|AFP|epd|KNA|sol\.de|SOL|Blaulichtreport|SR\s?3|SWR\s?Aktuell|SWR\s?3|RPR\s?1|Radio Salü|Google News|Google|autobahn\.de|Autobahn GmbH|slaue(?:\.de)?|Quelle:?)\b/g;
 
 function clean(value: string) {
   return value
@@ -123,7 +134,7 @@ const CONNECT = [
   "",
 ];
 
-type Story = { region: string; headline: string; body: string; author?: string };
+type Story = { region: string; headline: string; body: string; author?: string; source?: string };
 
 function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
   const byRegion = (region: string) => ctx.news.filter((n) => n.region === region);
@@ -133,7 +144,12 @@ function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
     ...byRegion("Deutschland").slice(0, limitPerRegion),
     ...byRegion("Europa").slice(0, limitPerRegion),
     ...byRegion("Welt").slice(0, limitPerRegion),
-  ].map((n) => ({ region: n.region, headline: clean(n.headline), body: clean(n.body) }));
+  ].map((n) => ({
+    region: n.region,
+    headline: clean(n.headline).replace(/^[^\s:]{2,30}(?:\s[^\s:]{2,30})?:\s+/, ""),
+    body: clean(n.body),
+    source: n.source,
+  }));
   const reports = ctx.reports
     .filter((r) => r.approved)
     .slice(0, 2)
@@ -142,36 +158,19 @@ function newsStories(ctx: PlanContext, limitPerRegion: number): Story[] {
       headline: clean(r.title),
       body: clean(r.body),
       author: r.author,
+      source: `Reporter: ${r.author}`,
     }));
-  const all = [...chosen, ...reports].filter((s) => s.headline);
-  if (all.length) return all;
-  return [
-    {
-      region: "Saarland",
-      headline: "Der Landtag berät über Entlastungen für energieintensive Betriebe",
-      body: "Die Stahlindustrie erwartet eine Entscheidung noch vor dem Sommer. Die Landesregierung will die Ergebnisse am Nachmittag vorstellen.",
-    },
-    {
-      region: "Rheinland-Pfalz",
-      headline: "Die Winzer an Mosel und Nahe rechnen mit einem früheren Lesebeginn",
-      body: "Grund ist die warme Witterung der vergangenen Wochen. Erste Betriebe starten schon in der kommenden Woche.",
-    },
-    {
-      region: "Welt",
-      headline: "Die großen Notenbanken lassen die Leitzinsen unverändert",
-      body: "Begründet wird das mit einer langsam sinkenden Inflation. Anpassungen sind frühestens im Herbst zu erwarten.",
-    },
-  ];
+  // Regel 2: keine erfundenen Ersatz-Meldungen mehr, wenn die Feeds leer sind – dann sagen die
+  // Nachrichten ehrlich, dass gerade nichts Neues vorliegt (siehe composeNews).
+  return [...chosen, ...reports].filter((s) => s.headline);
 }
 
 /** Anmoderation der Nachrichten inkl. Themenüberblick. */
-function newsIntroText(host: Host, at: number, stories: Story[], mode: "full" | "short") {
-  const themes = stories
-    .slice(0, mode === "full" ? 4 : 3)
-    .map((s) => endWithDot(s.headline))
-    .join(" ");
-  const label = mode === "full" ? "Die Nachrichten" : "Die Kurznachrichten";
-  return `Es ist ${spokenTime(at)}. ${label} auf Welle Südwest mit ${host.name}. Heute mit diesen Themen: ${themes}`;
+/** Regel 7 (station-rules.ts): keine Anmoderation mit gesprochenen Titeln/Themenliste – nur
+ *  Uhrzeit, Sender und Sprecher:in, die Meldungen selbst erzählen dann flüssig. */
+function newsIntroText(host: Host, at: number, _stories: Story[], mode: "full" | "short") {
+  const label = mode === "full" ? "die Nachrichten" : "die Kurznachrichten";
+  return `Es ist ${spokenTime(at)}, ${label} auf Welle Südwest mit ${host.name}.`;
 }
 
 /** Ausführlicher Nachrichtenblock. */
@@ -188,7 +187,22 @@ function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: 
   // Nachrichtensatz (Schlagzeile + ein kurzer Kontextsatz) statt einer trockenen Liste. Auch
   // "full" bewusst auf 6 statt 8 Meldungen begrenzt – acht Meldungen hintereinander wirkten wie
   // eine lange, abgehakte Liste statt einem kompakten, gut hörbaren Nachrichtenblock.
-  const list = stories.slice(0, mode === "full" ? 6 : 4);
+  // Regel 7: Nachrichten 30–90 Sekunden. Gemessen am KOMPLETT zusammengesetzten Text (inkl.
+  // Übergängen und Verabschiedung) – so viele Meldungen, wie hineinpassen, mindestens eine. Die
+  // Schätzung (145 Wörter/min) liegt etwas über dem echten Sprechtempo, deshalb 80/55 s als Ziel.
+  const maxSeconds = mode === "full" ? 80 : 55;
+  const all = stories.slice(0, mode === "full" ? 6 : 4);
+  for (let count = all.length; count >= 1; count--) {
+    const text = composeNews(host, all.slice(0, count), mode);
+    if (count === 1 || speakDuration(text) <= maxSeconds) return text;
+  }
+  return composeNews(host, all, mode);
+}
+
+function composeNews(host: Host, list: Story[], mode: "full" | "short") {
+  if (!list.length) {
+    return `Zur Stunde liegen uns keine neuen Meldungen vor. Wir halten Sie auf dem Laufenden. Jetzt der Verkehr.`;
+  }
   let prevRegion: string | undefined;
   // Echte Zufallsauswahl statt der deterministischen index-%-length-Wahl (pick()): bei fünf bis
   // sieben Meldungen in Folge landete pick() sonst leicht mehrfach auf derselben Übergangsfloskel
@@ -210,13 +224,12 @@ function newsBodyText(host: Host, stories: Story[], mode: "full" | "short", at: 
   // Verweis auf die News-Seite (/nachrichten) nur bei den ausführlichen Nachrichten zur vollen
   // Stunde, nicht bei jeder Kurznachricht – sonst wirkt der Hinweis selbst wie eine abgehakte
   // Wiederholung.
-  const homepageHint =
-    mode === "full" ? " Mehr dazu und weitere Meldungen zum Nachlesen auf unserer Homepage." : "";
+  const homepageHint = mode === "full" ? " Mehr dazu auf unserer Homepage." : "";
   const outro =
     mode === "full"
-      ? `Das waren die Nachrichten von Welle Südwest. Am Mikrofon ${host.name}.${homepageHint} Die nächsten Nachrichten hören Sie zur halben Stunde. Und jetzt der Verkehr.`
-      : `Mehr Nachrichten zur vollen Stunde. Am Mikrofon ${host.name}. Jetzt der Verkehr.`;
-  return `${parts.join(" ")} ${outro}`;
+      ? `Das waren die Nachrichten mit ${host.name}.${homepageHint} Jetzt der Verkehr.`
+      : `Mehr Nachrichten zur vollen Stunde. Jetzt der Verkehr.`;
+  return stripNewsTitleMarkers(`${parts.join(" ")} ${outro}`);
 }
 
 /* ------------------------------------------------------------------- Verkehr */
@@ -236,9 +249,10 @@ export type TrafficCategory = "unfall" | "sperrung" | "baustelle" | "stau";
  *  Verkehrsseite, damit dort sofort erkennbar ist, was wirklich sicherheitsrelevant ist (Unfall/
  *  Sperrung), statt Unfälle in einer unsortierten Liste zwischen gewöhnlichen Staus zu verstecken. */
 export function classifyTraffic(text: string): { category: TrafficCategory; urgent: boolean } {
-  const isAccident = /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(
-    text,
-  );
+  const isAccident =
+    /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(
+      text,
+    );
   const isClosure = /vollsperr|gesperrt/i.test(text);
   const isConstruction = /baustelle|bauarbeiten|verengung/i.test(text);
   const category: TrafficCategory = isAccident
@@ -357,7 +371,9 @@ const POLICE_UNKNOWN = [
 ];
 
 function policeStatus(raw: string, index: number): string {
-  if (/polizei[^.]{0,25}(vor ort|im einsatz|ist da|eingetroffen)|vor ort[^.]{0,25}polizei/i.test(raw)) {
+  if (
+    /polizei[^.]{0,25}(vor ort|im einsatz|ist da|eingetroffen)|vor ort[^.]{0,25}polizei/i.test(raw)
+  ) {
     return "Die Polizei ist vor Ort.";
   }
   if (/polizei/i.test(raw)) return "Die Polizei wurde informiert.";
@@ -370,7 +386,13 @@ function policeStatus(raw: string, index: number): string {
  *  mal eine natürliche Alternative. NICHT zu verwechseln mit der bewussten Ungenauigkeit beim
  *  Blitzer-Service (stripExactSpot) – die hat einen eigenen, rechtlichen Grund (siehe dort) und
  *  bleibt davon unberührt. */
-const VAGUE_LOCATION = ["", "", "in diesem Bereich", "auf diesem Abschnitt", "auf der gesamten Strecke"];
+const VAGUE_LOCATION = [
+  "",
+  "",
+  "in diesem Bereich",
+  "auf diesem Abschnitt",
+  "auf der gesamten Strecke",
+];
 function vagueLocation(index: number): string {
   return pick(VAGUE_LOCATION, index);
 }
@@ -396,9 +418,8 @@ function trafficLine(
     .replace(/\bASt\.?\s+/g, "Ausfahrt ")
     .replace(/\bRi\.\s*/g, "Richtung ");
   const road = item.road?.trim() || "";
-  const isAccident = /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(
-    raw,
-  );
+  const isAccident =
+    /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(raw);
   const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
   const where =
     exactSection(road, original) ||
@@ -478,11 +499,16 @@ function placeHits(h: HotlineReport, feedText: string): boolean {
 /** Einstiegssatz vor den Hörer-Verkehrsmeldungen im Verkehrsblock – wie im echten Radio klar als
  *  Hinweis von Hörerinnen und Hörern benannt, statt wie eine offizielle Meldung getarnt. */
 const LISTENER_LEAD = [
-  "Und das haben uns Hörerinnen und Hörer gerade gemeldet:",
-  "Dazu erreichte uns gerade ein Hinweis aus der Hörer-Hotline:",
-  "Und noch etwas aus der Hörer-Hotline:",
-  "Auch das meldeten uns Hörerinnen und Hörer gerade:",
+  `${UNCONFIRMED}: Das haben uns Hörerinnen und Hörer gerade gemeldet.`,
+  `Dazu ein Hinweis aus der Hörer-Hotline, ${UNCONFIRMED.toLowerCase()}:`,
+  `Und noch etwas aus der Hörer-Hotline – ${UNCONFIRMED.toLowerCase()}:`,
 ];
+
+/** Regel 12: Hörer-Meldungen ohne jede Ortsangabe (weder Ort noch Straße) sind uneindeutig – sie
+ *  gehen nicht automatisch on air, sondern landen mit editor_needed in der Redaktions-Liste. */
+export function isAmbiguousHotline(h: HotlineReport) {
+  return !h.place?.trim() && !h.road?.trim();
+}
 
 /** Eine Verkehrs-Hörermeldung wird genauso natürlich formuliert wie die offiziellen Feed-Meldungen
  *  (Straße, Stelle, Grund, Staulänge) statt 1:1 vom Eingabetext übernommen – Ort/Straße kommen aus
@@ -525,7 +551,7 @@ function trafficBody(ctx: PlanContext, at: number): string {
   // genauso, ohne eigenen Schlagwort-Filter.
   const hotline = dedupeByLocation(
     freshHotline(ctx)
-      .filter((h) => h.type === "verkehr")
+      .filter((h) => h.type === "verkehr" && !isAmbiguousHotline(h))
       .filter(
         (h) =>
           !feedRelevant.some(
@@ -541,9 +567,7 @@ function trafficBody(ctx: PlanContext, at: number): string {
   const lines = hotlineLines.length
     ? [...feedLines, `${pick(LISTENER_LEAD, seed)} ${hotlineLines.join(" ")}`]
     : feedLines;
-  return lines.length
-    ? lines.join(" ")
-    : "Auf den Autobahnen im Saarland und in Rheinland-Pfalz läuft der Verkehr zur Zeit störungsfrei. Keine größeren Behinderungen gemeldet.";
+  return lines.length ? lines.join(" ") : NO_TRAFFIC_FALLBACK;
 }
 
 export function trafficText(ctx: PlanContext, at: number) {
@@ -765,7 +789,9 @@ function blitzerOrtPhrase(place: string, road: string, index: number): string {
  *  Nutzer-Feedback "immer so ca 3 Blitzermeldungen melden") - eine lange Aufzählung von 5 Orten
  *  hintereinander wirkt im Radio wie eine abgelesene Liste statt einem kurzen Service-Hinweis. */
 function blitzerPlaces(ctx: PlanContext): string[] {
-  const list = dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).slice(0, 3);
+  const list = dedupeByLocation(
+    freshHotline(ctx).filter((h) => h.type === "blitzer" && !isAmbiguousHotline(h)),
+  ).slice(0, 3);
   return list.map((h, i) => blitzerOrtPhrase(h.place, h.road, i));
 }
 
@@ -784,7 +810,7 @@ export function blitzerLine(ctx: PlanContext) {
   if (!places.length) return "";
   const intro = BLITZER_INTRO[Math.floor(Math.random() * BLITZER_INTRO.length)];
   return clean(
-    `${intro} Geblitzt wird aktuell gemeldet: ${joinPlaces(places)}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`,
+    `${intro} ${UNCONFIRMED}, Hörerinnen und Hörer melden Blitzer: ${joinPlaces(places)}. Alle Angaben ohne Gewähr, halten Sie sich bitte an das Tempolimit.`,
   );
 }
 
@@ -822,26 +848,35 @@ export function trafficAndBlitzerText(ctx: PlanContext, at: number): string {
   if (order === 0) {
     // Erst der Verkehr, dann die Blitzer.
     const connect = pick(
-      ["Und dazu gleich der Blitzer-Service:", "Dazu noch kurz geblitzt wird aktuell:", "Und jetzt noch die gemeldeten Blitzer:"],
+      [
+        "Und dazu gleich der Blitzer-Service:",
+        "Dazu noch kurz geblitzt wird aktuell:",
+        "Und jetzt noch die gemeldeten Blitzer:",
+      ],
       seed,
     );
-    body = `${tBody} ${connect} ${joinPlaces(places)}. ${disclaimer}`;
+    body = `${tBody} ${connect} ${UNCONFIRMED.toLowerCase()}: ${joinPlaces(places)}. ${disclaimer}`;
   } else if (order === 1) {
     // Erst die Blitzer, dann der Verkehr.
     const connect = pick(
       ["Und jetzt der Verkehr:", "Dazu jetzt die Lage auf den Straßen:", "Kommen wir zum Verkehr:"],
       seed,
     );
-    body = `Geblitzt wird aktuell gemeldet: ${joinPlaces(places)}. ${disclaimer} ${connect} ${tBody}`;
+    body = `${UNCONFIRMED}, Hörerinnen und Hörer melden Blitzer: ${joinPlaces(places)}. ${disclaimer} ${connect} ${tBody}`;
   } else {
     // Im Wechsel: ein Blitzer vorweg als Teaser, der Verkehr dazwischen, der Rest der Blitzer zum
     // Schluss – wirkt wie ein natürlich verzahnter Programmpunkt statt zwei starrer Blöcke.
     const [first, ...rest] = places;
     const teaser = pick(
-      ["Vorab kurz: geblitzt wird aktuell", "Gleich vorweg, geblitzt wird gerade"],
+      [
+        `Vorab kurz, ${UNCONFIRMED.toLowerCase()}: Hörer melden einen Blitzer`,
+        `Gleich vorweg ein Hörerhinweis, ${UNCONFIRMED.toLowerCase()}: geblitzt wird gerade`,
+      ],
       seed,
     );
-    const restLine = rest.length ? ` Außerdem noch geblitzt: ${joinPlaces(rest)}. ${disclaimer}` : ` ${disclaimer}`;
+    const restLine = rest.length
+      ? ` Außerdem noch geblitzt: ${joinPlaces(rest)}. ${disclaimer}`
+      : ` ${disclaimer}`;
     body = `${teaser} ${first}. ${tBody}${restLine}`;
   }
   return clean(`${intro} ${body} ${outro}`);
@@ -849,7 +884,9 @@ export function trafficAndBlitzerText(ctx: PlanContext, at: number): string {
 
 /** Anzahl frischer Blitzer-Meldungen – steuert den eigenen Blitzer-Block im Plan. */
 export function blitzerCount(ctx: PlanContext) {
-  return dedupeByLocation(freshHotline(ctx).filter((h) => h.type === "blitzer")).length;
+  return dedupeByLocation(
+    freshHotline(ctx).filter((h) => h.type === "blitzer" && !isAmbiguousHotline(h)),
+  ).length;
 }
 
 /** Wichtige Meldungen (Unfälle, Sperrungen, Gefahren) – nur wenn es wirklich etwas gibt. */
@@ -859,7 +896,8 @@ export function urgentText(ctx: PlanContext) {
     return SPONTAN.test(s) && !/baustelle|bauarbeiten|verengung/i.test(s);
   });
   const callers = freshHotline(ctx).filter(
-    (h) => h.type === "verkehr" && SPONTAN.test(`${h.place} ${h.message}`),
+    (h) =>
+      h.type === "verkehr" && !isAmbiguousHotline(h) && SPONTAN.test(`${h.place} ${h.message}`),
   );
   if (!spontan.length && !callers.length) return null;
   const lines = spontan.slice(0, 2).map((t, i) => {
@@ -874,7 +912,7 @@ export function urgentText(ctx: PlanContext) {
   });
   const callerLines = callers
     .slice(0, 2)
-    .map((h) => clean(`Von einer Hörermeldung: ${listenerTrafficLine(h, 0)}`));
+    .map((h) => clean(`${UNCONFIRMED}, eine Hörermeldung: ${listenerTrafficLine(h, 0)}`));
   return `Eine wichtige Meldung für die Region. ${[...lines, ...callerLines].join(" ")} Bitte fahren Sie besonders vorsichtig.`;
 }
 
@@ -884,16 +922,7 @@ const SEASON_TEMP = [4, 5, 9, 14, 19, 23, 25, 25, 20, 14, 8, 5];
 
 /** Windrichtung in Grad → deutscher Himmelsrichtungsname. */
 function windDirectionWord(deg: number): string {
-  const dirs = [
-    "Nord",
-    "Nordost",
-    "Ost",
-    "Südost",
-    "Süd",
-    "Südwest",
-    "West",
-    "Nordwest",
-  ];
+  const dirs = ["Nord", "Nordost", "Ost", "Südost", "Süd", "Südwest", "West", "Nordwest"];
   return dirs[Math.round(deg / 45) % 8];
 }
 
@@ -906,7 +935,9 @@ function weatherText(host: Host, at: number, outlook: boolean, ctx?: PlanContext
   // lauffähig bleibt.
   const base = SEASON_TEMP[berlinMonth(at)];
   const high = w ? w.currentTemp : base + (date % 4) - 1;
-  const low = w ? Math.min(w.currentTemp, w.daily[0]?.min ?? w.currentTemp - 6) : Math.max(-6, high - 7);
+  const low = w
+    ? Math.min(w.currentTemp, w.daily[0]?.min ?? w.currentTemp - 6)
+    : Math.max(-6, high - 7);
   const sky = w
     ? weatherCodeToSky(w.currentCode, date + hour)
     : pick(
@@ -1046,7 +1077,14 @@ const SMALLTALK = [
 /* ------------------------------------------------- Themen-Checkliste */
 
 export type TopicCat =
-  "kultur" | "netz" | "witziges" | "service" | "region" | "musik" | "hoerer" | "nacht";
+  | "kultur"
+  | "netz"
+  | "witziges"
+  | "service"
+  | "region"
+  | "musik"
+  | "hoerer"
+  | "nacht";
 
 /** Diese vier Rubriken müssen tagsüber in jeder Moderationsrunde vorkommen. */
 const CHECKLIST: TopicCat[] = ["kultur", "netz", "witziges", "service"];
@@ -1466,6 +1504,128 @@ function showHandoffText(prevHost: Host, nextShow: Show, nextHost: Host, at: num
  * Nachrichten laufen sekundengenau: Anmoderation mit Themenüberblick, Trenner,
  * ausführlicher Block, danach ein gemeinsamer Verkehrsblock.
  */
+/** Regel 11: Metadaten-Grundgerüst; ts setzt push() auf die geplante Startzeit. */
+function metaFor(sources: string[], editorNeeded = false, reason?: string): ProductionMeta {
+  return {
+    auto_generated: true,
+    sources: [...new Set(sources.filter(Boolean))],
+    ts: "",
+    editor_needed: editorNeeded,
+    ...(reason ? { editor_reason: reason } : {}),
+  };
+}
+
+/** Interne Quellenangaben eines Verkehrsblocks (nur Metadaten, nie gesprochen – Regel 3). */
+export function trafficSources(ctx: PlanContext): string[] {
+  const out: string[] = [];
+  for (const t of ctx.traffic) {
+    out.push(t.source === "api" ? "Autobahn-API (verkehr.autobahn.de)" : "Verkehrs-RSS");
+  }
+  const hotline = freshHotline(ctx).filter(
+    (h) => (h.type === "verkehr" || h.type === "blitzer") && !isAmbiguousHotline(h),
+  );
+  if (hotline.length) out.push(`Hörer-Hotline (${UNCONFIRMED})`);
+  return [...new Set(out)];
+}
+
+/** Regel 4: wichtige Verkehrslage (Unfall, sperrende Störung, größerer Stau) – dann läuft der
+ *  Verkehrs-Jingle erst NACH der Ansage und keine Musik darunter. */
+const IMPORTANT_TRAFFIC =
+  /(unfall|vollsperr|gesperrt|sperrung|stillstand|geisterfahrer|falschfahrer|personen auf der fahrbahn|gefahrgut|bergung)/i;
+export function trafficIsImportant(ctx: PlanContext): boolean {
+  const bigJam = (text: string) => {
+    const km = Number(text.match(/(\d+(?:[.,]\d+)?)\s*km/i)?.[1]?.replace(",", "."));
+    return /stau/i.test(text) && km >= 5;
+  };
+  const feed = ctx.traffic.some((t) => {
+    const text = `${t.headline} ${t.message}`;
+    return (IMPORTANT_TRAFFIC.test(text) && !/baustelle|bauarbeiten/i.test(text)) || bigJam(text);
+  });
+  const callers = freshHotline(ctx).some(
+    (h) =>
+      h.type === "verkehr" && !isAmbiguousHotline(h) && IMPORTANT_TRAFFIC.test(h.message ?? ""),
+  );
+  return feed || callers;
+}
+
+/** Hörer-Meldungen, die mangels Ortsangabe nicht automatisch gesendet werden (Regel 12). */
+export function ambiguousHotlineReports(ctx: PlanContext): HotlineReport[] {
+  return freshHotline(ctx).filter(
+    (h) => (h.type === "verkehr" || h.type === "blitzer") && isAmbiguousHotline(h),
+  );
+}
+
+/** Regel 3: "bei wichtigen Ereignissen sofort" – neue Sofort-Lagen (Unfall, Vollsperrung,
+ *  Falschfahrer, ...), die noch nicht angesagt wurden, als eigene Meldung direkt nach dem
+ *  laufenden Element, gefolgt vom Verkehrs-Jingle (Regel 4). */
+export function urgentTrafficItems(
+  ctx: PlanContext,
+  at: number,
+  announced: Set<string>,
+): { items: PlanItem[]; ids: string[] } {
+  const traffic = ctx.traffic.filter((t) => {
+    const text = `${t.headline} ${t.message}`;
+    return (
+      SPONTAN.test(text) && !/baustelle|bauarbeiten|verengung/i.test(text) && !announced.has(t.id)
+    );
+  });
+  const callers = freshHotline(ctx).filter(
+    (h) =>
+      h.type === "verkehr" &&
+      !isAmbiguousHotline(h) &&
+      SPONTAN.test(`${h.place} ${h.message}`) &&
+      !announced.has(h.id),
+  );
+  if (!traffic.length && !callers.length) return { items: [], ids: [] };
+  const text = urgentText({ ...ctx, traffic, hotline: callers });
+  if (!text) return { items: [], ids: [] };
+  const { show, host } = showForDate(new Date(at));
+  const sources = [
+    ...traffic.map((t) =>
+      t.source === "api" ? "Autobahn-API (verkehr.autobahn.de)" : "Verkehrs-RSS",
+    ),
+    ...(callers.length ? [`Hörer-Hotline (${UNCONFIRMED})`] : []),
+  ];
+  const speech: PlanItem = {
+    uid: uid(),
+    kind: "traffic",
+    title: "Wichtige Verkehrsmeldung",
+    subtitle: "Sofort-Meldung",
+    duration: speakDuration(text),
+    text,
+    voice: host.voice,
+    hostId: host.id,
+    hostName: host.name,
+    showId: show.id,
+    sponsor: null,
+    plannedAt: at,
+    status: "idle",
+    trafficJingleAfterAnnouncement: true,
+    meta: { ...metaFor(sources), ts: new Date(at).toISOString(), tts: true },
+  };
+  const items: PlanItem[] = [speech];
+  const jingles = mediaOf(ctx.media, "jingle", "nachrichten").filter((m) => mediaIsActive(m, at));
+  const j = jingles.length ? jingles[Math.floor(Math.random() * jingles.length)] : null;
+  if (j) {
+    const jAt = at + speech.duration * 1000;
+    items.push({
+      uid: uid(),
+      kind: "jingle",
+      title: "Verkehrs-Jingle (nach der Meldung)",
+      subtitle: "Trenner",
+      duration: j.duration,
+      mediaId: j.streamUrl ? undefined : j.id,
+      streamUrl: j.streamUrl,
+      sponsor: null,
+      plannedAt: jAt,
+      status: "idle",
+      showId: show.id,
+      meta: { ...metaFor([]), ts: new Date(jAt).toISOString() },
+    });
+  }
+  return { items, ids: [...traffic.map((t) => t.id), ...callers.map((h) => h.id)] };
+}
+
 export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext }): PlanItem[] {
   const { ctx } = opts;
   /** Werbung läuft ausschließlich nach erfolgreicher Bewerbung und Freigabe. */
@@ -1547,6 +1707,13 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         // ohne das würde hier immer wieder die Sendungsmoderation eingesetzt.
         hostId: item.hostId ?? host.id,
         hostName: item.hostName ?? host.name,
+        // Regel 11: jede Ausgabe trägt auto_generated, sources, ts und editor_needed; Regel 9:
+        // TTS-Ausgaben (Text ohne Audiodatei) sind als solche markiert.
+        meta: {
+          ...(item.meta ?? metaFor([])),
+          ts: new Date(plannedAt).toISOString(),
+          ...(item.text && !item.mediaId && !item.streamUrl ? { tts: true } : {}),
+        },
       };
       items.push(full);
       cursor = plannedAt + full.duration * 1000;
@@ -1564,8 +1731,14 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       // Talkover NUR direkt nach einem normalen Song (kein Jingle als Brücke dazwischen, siehe
       // items[items.length - 1]) und NIE vor Werbung – ein Werbespot soll immer sauber und ohne
       // Überlapp auf den vorigen Song starten, kein Talkover-Effekt.
+      // Regel 6 (station-rules.ts): Musik darf nur unter sehr kurzen Callouts (max. 5 Wörter)
+      // weiterlaufen – nie unter Nachrichten, Verkehr, Warnungen oder längerer Moderation.
       const prev = items[items.length - 1];
-      const eligible = kind !== "ad" && prev?.kind === "music";
+      const eligible =
+        prev?.kind === "music" &&
+        (kind === "moderation" || kind === "slogan") &&
+        !extra?.civilWarning &&
+        wordCount(text) <= OVERLAY_WORDS_MAX;
       const talkoverSeconds =
         eligible && Math.random() < TALKOVER_CHANCE ? talkoverSecondsFor(duration) : undefined;
       return push({
@@ -1579,6 +1752,17 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         needsApproval: approval,
         approved: !approval,
         talkoverSeconds,
+        ...(talkoverSeconds
+          ? {
+              overlay: {
+                overlay: true as const,
+                overlay_duration_s: talkoverSeconds,
+                overlay_words_max: OVERLAY_WORDS_MAX,
+                ducking_db: OVERLAY_DUCKING_DB,
+                voice_priority: true as const,
+              },
+            }
+          : {}),
         ...extra,
       });
     };
@@ -1638,6 +1822,8 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         license: t.license,
         source: t.source,
         sponsor: null,
+        songSlot: true,
+        meta: metaFor([t.source ?? "", t.license ?? ""]),
       });
       lastSong = `${t.title} von ${t.artist}`;
     };
@@ -1899,11 +2085,21 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       // damit sich die Schalte auf ein wirkliches Thema bezieht statt auf einen beliebigen,
       // austauschbaren Text. Gibt es (z. B. bei ausgefallenen Feeds) gar keine Meldungen, fällt
       // es auf die alte, themenunabhängige Auswahl zurück.
-      const withNews = CORRESPONDENTS.filter((c) => newsItems.some((n) => n.region === c.region));
+      // Regel 2: Auslands-Schalten (z. B. New York) nur, wenn die Meldung einen klaren Bezug zu
+      // Saarland/Rheinland-Pfalz hat – sonst bleiben Berlin, Brüssel, Mainz und Saarbrücken.
+      const relevant = (n: { region: string; headline: string; body: string }) =>
+        n.region !== "Welt" || REGIONAL_RELEVANCE.test(`${n.headline} ${n.body}`);
+      const withNews = CORRESPONDENTS.filter((c) =>
+        newsItems.some((n) => n.region === c.region && relevant(n)),
+      );
       const seed = generalIndex + Math.floor(cursor / 3600_000);
-      const correspondent = withNews.length ? pick(withNews, seed) : correspondentFor(seed);
-      const story = newsItems.find((n) => n.region === correspondent.region);
+      const domestic = CORRESPONDENTS.filter((c) => c.region !== "Welt");
+      const correspondent = withNews.length ? pick(withNews, seed) : pick(domestic, seed);
+      const story = newsItems.find((n) => n.region === correspondent.region && relevant(n));
 
+      // Regel 2: ohne echte Meldung keine Schalte – ein frei erfundener "Live-Bericht" wäre eine
+      // erfundene Tatsache.
+      if (!story) return;
       speak(
         "moderation",
         `Schalte zu ${correspondent.city}`,
@@ -1922,14 +2118,6 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
             hostName: correspondent.name,
             correspondentReport: true,
           },
-        );
-      } else {
-        speak(
-          "moderation",
-          `Bericht aus ${correspondent.city}`,
-          correspondent.name,
-          pick(CORRESPONDENT_REPORTS[correspondent.id] ?? [], generalIndex),
-          { voice: correspondent.voice, hostId: correspondent.id, hostName: correspondent.name },
         );
       }
     };
@@ -1979,7 +2167,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         "traffic",
         "Entwarnung",
         ort,
-        clean(`Kurze Entwarnung aus ${w.region}: bei ${ort} gilt die vorherige Meldung nicht mehr. ${w.message ?? ""}`),
+        clean(
+          `Kurze Entwarnung aus ${w.region}: bei ${ort} gilt die vorherige Meldung nicht mehr. ${w.message ?? ""}`,
+        ),
       );
       hotlineAnnouncedThisPlan.add(w.id);
       ctx.markHotlineAnnounced?.([w.id]);
@@ -2030,6 +2220,26 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       return true;
     };
 
+    /** Verkehr und Blitzer als EIN gemeinsamer Programmpunkt (siehe trafficAndBlitzerText).
+     *  Regel 4: bei einer wichtigen Lage (Unfall, Sperrung, größerer Stau) KEIN Sweeper/Bett davor –
+     *  erst die Ansage, dann sofort der Verkehrs-Jingle. Sonst wie gewohnt Sweeper, dann Ansage. */
+    const pushTrafficSegment = () => {
+      const important = trafficIsImportant(ctx);
+      if (!important) pushTrenner("Verkehrs-Sweeper");
+      speak(
+        "traffic",
+        "Verkehr & Blitzer Saarland und Rheinland-Pfalz",
+        `${blitzerCount(ctx)} Blitzer-Hörermeldungen (${UNCONFIRMED.toLowerCase()})`,
+        trafficAndBlitzerText(ctx, cursor),
+        {
+          sponsor: sponsorFor("verkehr")?.name ?? null,
+          meta: metaFor(trafficSources(ctx)),
+          ...(important ? { trafficJingleAfterAnnouncement: true } : {}),
+        },
+      );
+      if (important) pushTrenner("Verkehrs-Jingle (nach der Meldung)");
+    };
+
     /** Nachrichtenblock: Anmoderation → Trenner → Meldungen → Trenner → Verkehr. Läuft über
      *  eine eigene Nachrichtensprecher:in, nicht über die Sendungsmoderation – wie im echten
      *  Regionalradio üblich. */
@@ -2038,6 +2248,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       const stories = newsStories(ctx, mode === "full" ? 4 : 5);
       const intro = newsIntroText(anchor, at, stories, mode);
       const body = newsBodyText(anchor, stories, mode, at);
+      const newsMeta = metaFor(stories.map((st) => st.source ?? ""));
       const first = push(
         {
           kind: "news",
@@ -2052,6 +2263,7 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
           hardStart: at,
           needsApproval: approval,
           approved: !approval,
+          meta: newsMeta,
         },
         at,
       );
@@ -2073,17 +2285,9 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
         sponsor: null,
         needsApproval: approval,
         approved: !approval,
+        meta: newsMeta,
       });
-      pushTrenner("Verkehrs-Sweeper");
-      // Verkehr und Blitzer laufen als EIN gemeinsamer Programmpunkt (siehe trafficAndBlitzerText) -
-      // vorher zwei getrennte, immer gleich sortierte Durchsagen/Audiodateien.
-      speak(
-        "traffic",
-        "Verkehr & Blitzer Saarland und Rheinland-Pfalz",
-        `${blitzerCount(ctx)} Blitzer-Hörermeldungen`,
-        trafficAndBlitzerText(ctx, cursor),
-        { sponsor: sponsorFor("verkehr")?.name ?? null },
-      );
+      pushTrafficSegment();
       // Wichtige Meldungen werden nicht fest eingeplant, sondern nur spontan
       // eingeblendet, wenn eine neue Gefahrenlage hereinkommt.
       return true;
@@ -2206,11 +2410,25 @@ export function buildPlan(opts: { from: Date; hours: number; ctx: PlanContext })
       pushWeather();
     };
 
-    fillUntil(halfPast - PRE_NEWS_RESERVE_MS);
+    // Regel 3: in den Stoßzeiten (06–10, 11:30–13:30) zusätzlich zu den Nachrichten-Verkehrsblöcken
+    // (:00/:30) auch um :15 und :45 Verkehr – also alle 15 Minuten. Sonst nur nach den Nachrichten.
+    const trafficMarks = [15, 45]
+      .map((m) => hourStart.getTime() + m * 60_000)
+      .filter((t) => isRushMinute(berlinHour(t) * 60 + berlinMinute(t)));
+    const fillWithTraffic = (limit: number) => {
+      for (const mark of trafficMarks) {
+        if (mark <= cursor || mark >= limit) continue;
+        fillUntil(mark);
+        pushTrafficSegment();
+      }
+      fillUntil(limit);
+    };
+
+    fillWithTraffic(halfPast - PRE_NEWS_RESERVE_MS);
     pushPreNews();
     if (cursor < halfPast) cursor = halfPast;
     pushNewsBlock("short", halfPast);
-    fillUntil(hourEnd - PRE_NEWS_RESERVE_MS);
+    fillWithTraffic(hourEnd - PRE_NEWS_RESERVE_MS);
     pushPreNews();
     if (cursor < hourEnd) cursor = hourEnd;
 

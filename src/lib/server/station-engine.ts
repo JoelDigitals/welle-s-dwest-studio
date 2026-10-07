@@ -1,4 +1,11 @@
-import { buildPlan } from "@/lib/planner";
+import { buildPlan, urgentTrafficItems } from "@/lib/planner";
+import {
+  MORNING_SLOT,
+  TRAFFIC_POLL_MINUTES,
+  regionalActionDays,
+  screenAiText,
+  stripNewsTitleMarkers,
+} from "@/lib/station-rules";
 import type {
   NewsFeedItem,
   PlanContext,
@@ -68,7 +75,8 @@ const REFILL_HOURS = 0.25;
 const REFILL_THRESHOLD_SECONDS = 8 * 60;
 
 const NEWS_TTL_MS = 5 * 60_000;
-const TRAFFIC_TTL_MS = 3 * 60_000;
+// Muss zum gesprochenen Fallback "Wir prüfen in X Minuten erneut" passen (station-rules.ts).
+const TRAFFIC_TTL_MS = TRAFFIC_POLL_MINUTES * 60_000;
 // Amtliche Warnungen (Bevölkerungsschutz/Wetter/Polizei/Hochwasser) dürfen nicht lange veraltet
 // sein – kürzeres Intervall als Nachrichten/Verkehr, da eine neue Warnung so schnell wie möglich
 // on air soll.
@@ -100,6 +108,12 @@ type EngineState = {
   /** Fehlversuche beim Audio-Vorbereiten je Element – nach MAX_PREPARE_FAILURES wird es
    *  übersprungen, statt dass die Engine für immer auf ein nie fertig werdendes Audio wartet. */
   prepareFailures: Map<string, number>;
+  /** Regel 14: Elemente, die die KI als editor_needed markiert hat – werden NICHT per TTS
+   *  ausgespielt, sondern landen hier für die Redaktion (siehe /api/production). */
+  editorHolds: EditorHold[];
+  /** Bereits als Sofort-Verkehrsmeldung angesagte Feed-/Hotline-IDs (Regel 3: "sofort"). */
+  urgentAnnounced: Set<string>;
+  urgentCheckedAt: number;
   news: { items: NewsFeedItem[]; at: number };
   traffic: { items: TrafficFeedItem[]; at: number };
   /** Amtliche Warnungen (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp) für Saarland/RLP. */
@@ -137,6 +151,26 @@ type EngineState = {
   streamedBytes: number;
 };
 
+export type EditorHold = {
+  uid: string;
+  kind: string;
+  title: string;
+  plannedAt: number;
+  reason: string;
+  text: string;
+  heldAt: number;
+};
+
+/** Ausnahme für prepareAudio: Element darf laut Regel 14 nicht automatisch per TTS raus. */
+class EditorHoldError extends Error {
+  constructor(
+    readonly reason: string,
+    readonly text: string,
+  ) {
+    super(reason);
+  }
+}
+
 const g = globalThis as unknown as { __stationEngine?: EngineState };
 
 function getState(): EngineState {
@@ -148,6 +182,9 @@ function getState(): EngineState {
     audioCache: new Map(),
     preparing: new Set(),
     prepareFailures: new Map(),
+    editorHolds: [],
+    urgentAnnounced: new Set(),
+    urgentCheckedAt: 0,
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
     warnings: { items: [], at: 0 },
@@ -210,7 +247,7 @@ async function ensureDailyThemes(state: EngineState) {
   // Echte, verifizierte Kuriositäts-/Aktionstage des heutigen Kalendertags (z. B. "Tag des
   // Fleischkäses") – Datenquelle kuriose-feiertage.de (siehe curiosity-days.ts). "today" ist
   // "YYYY-MM-DD", die letzten 5 Zeichen ergeben den "MM-DD"-Schlüssel der Tabelle.
-  const curiosityDays = CURIOSITY_DAYS[today.slice(5)] ?? [];
+  const curiosityDays = regionalActionDays(CURIOSITY_DAYS[today.slice(5)] ?? []);
   for (const show of SHOWS) {
     if (items[show.id]) continue;
     try {
@@ -224,7 +261,12 @@ async function ensureDailyThemes(state: EngineState) {
         direction: show.topics.join(", "),
         recentTopics: recent.map((r) => r.topic),
         topNews,
-        curiosityDays,
+        // Regel 10: Aktionstage-Vorschläge gehören in den Morning-Slot (06–10 Uhr) – nur
+        // Sendungen, deren 4-Stunden-Fenster ihn berührt, bekommen sie als Themenvorschlag.
+        curiosityDays:
+          show.startHour < MORNING_SLOT.toHour && show.startHour + 4 > MORNING_SLOT.fromHour
+            ? curiosityDays
+            : [],
         fallback: show.topics[0] ?? show.title,
       });
       await recordTopic(show.id, theme, today);
@@ -445,12 +487,32 @@ async function prepareAudio(item: PlanItem): Promise<AudioEntry | null> {
                       : item.kind === "traffic"
                         ? await tryHumanizeTraffic(text)
                         : text;
+  // Regel 11/14: interne KI-Marker nie sprechen. Markiert die KI einen Text als prüfpflichtig
+  // (eigene Stellungnahme zu Recht/Gesundheit/Politik, unklare Meldung) oder fehlt eine Quelle,
+  // spielt der Autopilot ihn NICHT per TTS aus – er geht an die Redaktion. Ausnahme: amtliche
+  // Warnmeldungen der Behörden, die sind bereits behördlich geprüft und dürfen nie zurückgehalten
+  // werden.
+  const screened = screenAiText(spokenText);
+  if ((screened.editorNeeded || screened.sourceMissing) && !item.civilWarning) {
+    throw new EditorHoldError(
+      screened.sourceMissing ? "Quelle fehlt" : "Redaktionelle Prüfung nötig",
+      screened.text,
+    );
+  }
+  const finalText = item.kind === "news" ? stripNewsTitleMarkers(screened.text) : screened.text;
+  item.meta = {
+    auto_generated: true,
+    sources: item.meta?.sources ?? [],
+    ts: item.meta?.ts ?? new Date(item.plannedAt).toISOString(),
+    editor_needed: false,
+    tts: true,
+  };
   // Immer Edge-TTS (nie Gemini): garantiert MP3 und kein Tageskontingent, das den 24/7-Betrieb
   // oder den Live-Stream unterbrechen könnte. hostId sorgt bei Personas, die sich eine der nur
   // 10 verfügbaren deutschen Stimmen mit einer Moderation teilen müssen, für eine kleine, feste
   // Tonhöhen-Verschiebung, damit sie trotzdem wie eine eigene Stimme klingen (siehe PERSONA_PITCH).
   const raw = await synthesizeSpeechMp3Only(
-    spokenText,
+    finalText,
     item.voice ?? "alloy",
     item.kind,
     item.hostId,
@@ -477,6 +539,28 @@ function ensureAudioPreparing(state: EngineState) {
         if (entry.duration > 0) item.duration = entry.duration;
       })
       .catch((err) => {
+        if (err instanceof EditorHoldError) {
+          console.warn("[station-engine] An Redaktion übergeben:", item.title, err.reason);
+          state.editorHolds = [
+            {
+              uid: item.uid,
+              kind: item.kind,
+              title: item.title,
+              plannedAt: item.plannedAt,
+              reason: err.reason,
+              text: err.text,
+              heldAt: Date.now(),
+            },
+            ...state.editorHolds,
+          ].slice(0, 50);
+          const queue = activeQueue(state);
+          if (queue[0]?.uid === item.uid) state.currentStartedAt = null;
+          setActiveQueue(
+            state,
+            queue.filter((i) => i.uid !== item.uid),
+          );
+          return;
+        }
         console.error("[station-engine] Audio fehlgeschlagen:", item.title, err);
         // Ohne Audio kann das Element nie starten – advanceQueue() würde dann ewig davor warten
         // (der Sendeplan "hängt"). Nach einigen Fehlversuchen daher einfach überspringen.
@@ -656,6 +740,26 @@ async function tickAutopilotPlanning(state: EngineState) {
   }
 }
 
+/** Regel 3: wichtige Verkehrslagen "sofort" – höchstens einmal pro Minute prüfen (braucht die
+ *  Hotline aus der DB), neue Sofort-Lagen direkt hinter das laufende Element setzen. Beim ersten
+ *  Durchlauf nach dem Start werden bestehende Lagen nur als bekannt markiert – die laufen ohnehin
+ *  im nächsten regulären Verkehrsblock, ein Neustart soll keine Flut an Sofortmeldungen auslösen. */
+async function tickUrgentTraffic(state: EngineState) {
+  const now = Date.now();
+  if (now - state.urgentCheckedAt < 60_000) return;
+  const firstRun = state.urgentCheckedAt === 0;
+  state.urgentCheckedAt = now;
+  const ctx = await buildContext(state);
+  const current = state.plan[0];
+  const at =
+    current && state.currentStartedAt ? state.currentStartedAt + current.duration * 1000 : now;
+  const { items, ids } = urgentTrafficItems(ctx, at, state.urgentAnnounced);
+  ids.forEach((id) => state.urgentAnnounced.add(id));
+  if (firstRun || !items.length) return;
+  console.log("[station-engine] Sofort-Verkehrsmeldung eingeplant:", ids.join(", "));
+  state.plan = [...state.plan.slice(0, 1), ...items, ...state.plan.slice(1)];
+}
+
 /** Generischer Fortschritt durch die jeweils aktive Warteschlange (Autopilot-Plan oder
  *  Live-Warteschlange) – sobald ein Element zu Ende ist, direkt im selben Tick das nächste
  *  starten, wenn dessen Audio schon vorbereitet ist. Harte Zeitmarken/Lückenfüller gibt es nur
@@ -706,6 +810,7 @@ async function tick() {
 
     if (!state.liveMode) {
       await tickAutopilotPlanning(state);
+      await tickUrgentTraffic(state);
     }
 
     ensureAudioPreparing(state);
@@ -959,6 +1064,23 @@ export function getLiveQueue(): PlanItem[] {
 
 /** Aktueller Verkehrs-Snapshot (offizielle Autobahn-API + RSS) – für die öffentliche
  *  Staus/Blitzer-Übersicht auf der Homepage (siehe /api/public/traffic-overview). */
+/** Für den Produktions-Export (/api/production): aktueller Plan + an die Redaktion übergebene
+ *  Elemente. */
+export function getProductionSnapshot(): {
+  plan: PlanItem[];
+  liveMode: boolean;
+  currentStartedAt: number | null;
+  editorHolds: EditorHold[];
+} {
+  const state = getState();
+  return {
+    plan: activeQueue(state),
+    liveMode: state.liveMode,
+    currentStartedAt: state.currentStartedAt,
+    editorHolds: state.editorHolds,
+  };
+}
+
 export function getTrafficSnapshot(): TrafficFeedItem[] {
   return getState().traffic.items;
 }
