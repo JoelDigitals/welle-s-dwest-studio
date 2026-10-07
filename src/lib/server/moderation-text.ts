@@ -371,7 +371,7 @@ Du bekommst einen fertigen Verkehrsblock (offizielle Meldungen und/oder Hörer-H
 Wandle die rohe Meldungsliste in flüssig gesprochene, natürliche Sätze um, so wie ein echter Verkehrsfunk-Moderator spricht – mit normaler Satzmelodie, nicht wie eine Aufzählung oder ein abgelesener Polizeibericht.
 Hörer-Hinweise (aus der Hörer-Hotline) müssen als unbestätigte Hinweise von Hörer:innen erkennbar bleiben ("Hinweis – nicht bestätigt: ein Hörer meldet ...") und dürfen nicht als offizielle Meldung klingen. Nenne NIE, woher die offiziellen Meldungen stammen (keine Datenquelle, kein Sender, keine Webseite).
 Halte dich an die vorgegebene Reihenfolge, kürze nichts weg und füge keine neuen Meldungen oder Orte hinzu.
-Vermeide doppelte oder unsinnige Formulierungen wie "wegen einer Sperrung gesperrt" oder "Stau wegen Stau" – nenne einen Grund nur, wenn er wirklich etwas Neues sagt.
+Vermeide doppelte oder unsinnige Formulierungen wie "wegen einer Sperrung gesperrt" oder "Stau wegen Stau" – nenne einen Grund nur, wenn er wirklich etwas Neues sagt. Wiederhole Hinweise wie "Bitte weiträumig umfahren" nicht nach jeder Meldung, sondern formuliere abwechslungsreich und verbinde die Meldungen zu einem flüssigen Verkehrsblock.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
 /** Wie tryHumanizeNews, aber mit dem faktentreuen Verkehrsfunk-Prompt. */

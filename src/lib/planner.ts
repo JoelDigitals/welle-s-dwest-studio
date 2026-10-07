@@ -267,7 +267,7 @@ function reasonOf(text: string) {
   if (t.includes("bergung")) return "wegen Bergungsarbeiten";
   if (t.includes("baustelle") || t.includes("bauarbeiten")) return "wegen einer Baustelle";
   // Konkrete Arbeiten aus der Meldung übernehmen ("Brückenarbeiten", "Fahrbahnarbeiten" …).
-  const works = text.match(/([A-Za-zÄÖÜäöüß-]{3,}arbeiten)/)?.[1];
+  const works = text.match(/\b([A-Za-zÄÖÜäöüß-]{3,}arbeiten)\b/)?.[1];
   if (works) return `wegen ${works[0].toUpperCase()}${works.slice(1)}`;
   if (t.includes("verengung")) return "wegen einer Fahrbahnverengung";
   if (t.includes("gegenst")) return "wegen Gegenständen auf der Fahrbahn";
@@ -307,10 +307,25 @@ function minutesOf(text: string) {
 const kmWord = (km: number) => (km === 1 ? "rund einen Kilometer" : `rund ${km} Kilometer`);
 const minWord = (min: number) => (min === 1 ? "eine Minute" : `${min} Minuten`);
 
-function betweenOf(text: string) {
-  /** „AS Homburg" → „Ausfahrt Homburg", damit die Stelle klar ausgesprochen wird. */
+/** Schneidet Zustandswörter ab, die ein Ortsname aus dem Meldungstext mitgeschleppt hat
+ *  ("Dillingen (Saar) gesperrt" -> "Dillingen (Saar)"). */
+function trimStatus(value: string): string {
+  return value
+    .replace(
+      /\s+(?:(?:Ausfahrt|Auffahrt|Zufahrt)\s+)?(?:voll\s*)?(?:gesperrt|Vollsperrung|Sperrung|Stau|stockend\w*|dichter?|zähfließend\w*|gab|gibt|wegen|nach einem|in beiden|liegen|liegt|ist|sind|Unfall)\b.*$/i,
+      "",
+    )
+    .trim();
+}
+
+function betweenOf(text: string, autobahn = true) {
+  /** „AS Homburg" → „Ausfahrt Homburg", damit die Stelle klar ausgesprochen wird. Auf Bundes- und
+   *  Landstraßen gibt es keine Ausfahrten – dort bleibt der Ortsname ohne Zusatz. */
   const label = (raw: string) => {
-    const v = clean(raw).replace(/^(der|dem|die)\s+/i, "");
+    const v = trimStatus(clean(raw).replace(/^(der|dem|die)\s+/i, ""));
+    if (/^(Abzweig|Kreisel)/i.test(v)) return `dem ${v}`;
+    if (/^(Einmündung|Kreuzung)/i.test(v)) return `der ${v}`;
+    if (!autobahn) return v;
     if (
       /^(Anschlussstelle|Ausfahrt|Auffahrt|Kreuz|Autobahnkreuz|Dreieck|Autobahndreieck|Raststätte|Rastanlage|Tunnel|Brücke|Kilometer)/i.test(
         v,
@@ -367,13 +382,16 @@ function directionOf(text: string) {
  *  vor"), wenn der Meldungstext nichts zur Polizei sagt – stattdessen abwechselnde, nützlichere
  *  Formulierungen mit einem echten Verhaltenshinweis fürs Vorsichtigfahren. */
 const POLICE_UNKNOWN = [
-  "Die Polizei ist noch nicht vor Ort, fahren Sie deshalb besonders vorsichtig.",
-  "Ob die Polizei schon vor Ort ist, ist noch unklar – seien Sie an der Stelle besonders aufmerksam.",
-  "Rettungskräfte sind unterwegs. Fahren Sie an der Unfallstelle bitte besonders vorsichtig.",
-  "Details zum Polizeieinsatz liegen uns noch nicht vor, bitte trotzdem mit Vorsicht vorbeifahren.",
+  // Keine erfundenen Fakten (Regel 2): ohne Angabe in der Meldung nichts über Polizei oder
+  // Rettungskräfte behaupten – nur ein Verhaltenshinweis.
+  "Fahren Sie an der Unfallstelle bitte besonders vorsichtig.",
+  "Seien Sie an der Stelle bitte besonders aufmerksam.",
+  "Bitte dort mit Vorsicht vorbeifahren.",
 ];
 
 function policeStatus(raw: string, index: number): string {
+  if (/polizei[^.]{0,25}nicht[^.]{0,10}vor ort/i.test(raw))
+    return "Die Polizei ist noch nicht vor Ort.";
   if (
     /polizei[^.]{0,25}(vor ort|im einsatz|ist da|eingetroffen)|vor ort[^.]{0,25}polizei/i.test(raw)
   ) {
@@ -389,16 +407,18 @@ function policeStatus(raw: string, index: number): string {
  *  mal eine natürliche Alternative. NICHT zu verwechseln mit der bewussten Ungenauigkeit beim
  *  Blitzer-Service (stripExactSpot) – die hat einen eigenen, rechtlichen Grund (siehe dort) und
  *  bleibt davon unberührt. */
-const VAGUE_LOCATION = [
-  "",
-  "",
-  "in diesem Bereich",
-  "auf diesem Abschnitt",
-  "auf der gesamten Strecke",
-];
 function vagueLocation(index: number): string {
-  return pick(VAGUE_LOCATION, index);
+  // Klang im Satz oft schief ("in Richtung X auf diesem Abschnitt ist ...") – lieber nichts.
+  void index;
+  return "";
 }
+
+const DETOUR_HINTS = [
+  "Bitte weiträumig umfahren.",
+  "Nutzen Sie dort am besten die Umleitung.",
+  "Planen Sie dafür eine andere Strecke ein.",
+  "Umfahren Sie den Bereich bitte großräumig.",
+];
 
 /** Eine natürlich klingende Verkehrsmeldung im Radiostil. Die Position wird – wie im echten Radio
  *  üblich ("zwischen Ausfahrt X und Ausfahrt Y") – so genau wie möglich aus der Anschlussstellen-
@@ -424,27 +444,39 @@ function trafficLine(
   const isAccident =
     /unfall|verunglück|kollidiert|kollision|zusammengestoßen|zusammenstoß|auffahrunfall/i.test(raw);
   const textPlace = raw.match(/\bbei\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s[A-ZÄÖÜ][\wäöüß.-]+)?)/)?.[1] ?? "";
+  // Auf Bundes- und Landstraßen kennt die Ausfahrten-Tabelle nichts – dort zuerst die Angabe
+  // aus dem Meldungstext ("zwischen Püttlingen und dem Abzweig nach Püttlingen").
+  const autobahn = /^A\s?\d/i.test(road);
   const where =
+    (!autobahn && betweenOf(raw, false)) ||
     exactSection(road, original) ||
     exactSection(road, raw) ||
     sectionForPlace(road, item.place ?? "") ||
     sectionForPlace(road, textPlace) ||
-    betweenOf(raw) ||
+    betweenOf(raw, autobahn) ||
     vagueLocation(index);
   const dir = directionOf(raw);
   const reason = reasonOf(raw);
   const urgent = URGENT.test(raw);
   const km = kmOf(raw, index + road.length);
   const minutes = minutesOf(raw);
-  const place = clean(`${dir} ${where}`) || "in der Region";
-  const policeNote = isAccident ? ` ${policeStatus(raw, index)}` : "";
+  const place = clean(`${dir} ${trimStatus(where)}`) || "in der Region";
+  // Erwähnt die Meldung die Polizei schon selbst, nicht noch einmal (und nie widersprüchlich).
+  const policeNote = isAccident && !/polizei/i.test(raw) ? ` ${policeStatus(raw, index)}` : "";
 
+  // Nur eine Aus-/Auffahrt gesperrt (typische Hörermeldung) – nicht die ganze Strecke.
+  const ramp = raw.match(/\b(Ausfahrt|Auffahrt)\s+(?:ist\s+)?(?:voll\s*)?gesperrt/i)?.[1];
+  if (ramp && item.place) {
+    return clean(
+      `${road ? `Auf der ${road}` : "Achtung,"} ${dir} ist die ${ramp} ${item.place} gesperrt. ${pick(DETOUR_HINTS, index)}`,
+    );
+  }
   if (/vollsperr|gesperrt/i.test(raw)) {
     return clean(
       `${road ? `Auf der ${road}` : "Achtung"} ${place} ist die Strecke${
         // "wegen einer Sperrung gesperrt" wäre doppelt – dann lieber gar keinen Grund nennen.
         reason && reason !== "wegen einer Sperrung" ? ` ${reason}` : ""
-      } gesperrt. Bitte weiträumig umfahren.${policeNote}`,
+      } gesperrt. ${pick(DETOUR_HINTS, index)}${policeNote}`,
     );
   }
 
@@ -464,7 +496,29 @@ function trafficLine(
   // Gefahrenmeldung ohne Stau (z. B. Gegenstände auf der Fahrbahn): genau das sagen, was gemeldet
   // ist – keine erfundene Staulänge oder Wartezeit.
   if (!/stau|stockend|zäh|dicht|stillstand|stehen/i.test(raw)) {
-    return clean(`Achtung, ${raw}. Bitte fahren Sie dort besonders vorsichtig.${policeNote}`);
+    // Unfall: als ganzer, sauberer Satz statt roh vorgelesen ("L136 Holz Richtung … gab es einen
+    // Unfall" -> "Auf der L136 bei Holz in Richtung … hat es einen Unfall gegeben.").
+    if (isAccident && road) {
+      const town = raw.match(
+        new RegExp(
+          `^${road.replace(/\s+/g, "\\s*")}\\s+([A-ZÄÖÜ][\\wäöüß.-]+)(?=\\s+(?:Richtung|zwischen|in|bei)\\s)`,
+        ),
+      )?.[1];
+      const police = policeStatus(raw, index);
+      const careful = /vorsicht|aufmerksam/i.test(police)
+        ? ""
+        : " Bitte fahren Sie dort besonders vorsichtig.";
+      return clean(
+        `Auf der ${road}${town ? ` bei ${town}` : ""} ${place === "in der Region" ? "" : place} hat es einen Unfall gegeben. ${police}${careful}`,
+      );
+    }
+    const body = raw
+      .replace(new RegExp(`^${road.replace(/\s+/g, "\\s*")}\\s*`, "i"), "")
+      .replace(/[.!\s]+$/, "");
+    const careful = /vorsicht|aufpassen|achtung/i.test(body)
+      ? ""
+      : " Bitte fahren Sie dort besonders vorsichtig.";
+    return clean(`Achtung${road ? ` auf der ${road}` : ""}: ${body}.${careful}${policeNote}`);
   }
   const stillstand = /stillstand/i.test(raw);
   const span = km ? ` auf ${kmWord(km)}` : "";
@@ -508,17 +562,18 @@ function roadKeyOf(road: string | undefined): string {
 /** True, wenn der Ort/die Stelle eines Hörer-Hinweises schon in einer Feed-Meldung vorkommt –
  *  verhindert, dass dieselbe Lage doppelt vorgelesen wird (erst offiziell, dann als Hörer). */
 function placeHits(h: HotlineReport, feedText: string): boolean {
-  const hay = feedText.toLowerCase();
+  const norm = (v: string) => v.toLowerCase().replace(/\bsankt\s+/g, "st. ");
+  const hay = norm(feedText);
   const loc = [h.place, h.road].filter((v) => v && v.length >= 3);
-  return loc.some((v) => hay.includes(v.toLowerCase()));
+  return loc.some((v) => hay.includes(norm(v)));
 }
 
 /** Einstiegssatz vor den Hörer-Verkehrsmeldungen im Verkehrsblock – wie im echten Radio klar als
  *  Hinweis von Hörerinnen und Hörern benannt, statt wie eine offizielle Meldung getarnt. */
 const LISTENER_LEAD = [
-  `${UNCONFIRMED}: Das haben uns Hörerinnen und Hörer gerade gemeldet.`,
-  `Dazu ein Hinweis aus der Hörer-Hotline, ${UNCONFIRMED.toLowerCase()}:`,
-  `Und noch etwas aus der Hörer-Hotline – ${UNCONFIRMED.toLowerCase()}:`,
+  "Dazu ein Hinweis von Hörerinnen und Hörern, noch nicht bestätigt:",
+  "Und noch etwas aus der Hörer-Hotline, noch nicht bestätigt:",
+  "Ein Hörer-Hinweis, den wir noch nicht bestätigen können:",
 ];
 
 /** Regel 12: Hörer-Meldungen ohne jede Ortsangabe (weder Ort noch Straße) sind uneindeutig – sie
@@ -1116,7 +1171,14 @@ const SMALLTALK = [
 /* ------------------------------------------------- Themen-Checkliste */
 
 export type TopicCat =
-  "kultur" | "netz" | "witziges" | "service" | "region" | "musik" | "hoerer" | "nacht";
+  | "kultur"
+  | "netz"
+  | "witziges"
+  | "service"
+  | "region"
+  | "musik"
+  | "hoerer"
+  | "nacht";
 
 /** Diese vier Rubriken müssen tagsüber in jeder Moderationsrunde vorkommen. */
 const CHECKLIST: TopicCat[] = ["kultur", "netz", "witziges", "service"];
