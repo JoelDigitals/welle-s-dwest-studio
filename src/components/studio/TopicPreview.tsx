@@ -69,8 +69,7 @@ export function TopicPreview({ plan, limit = 5 }: { plan: PlanItem[]; limit?: nu
               </p>
               {(item.topicOpen?.length ?? 0) > 0 && (
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Danach noch offen:{" "}
-                  {(item.topicOpen ?? []).map((c) => LABELS[c] ?? c).join(", ")}
+                  Danach noch offen: {(item.topicOpen ?? []).map((c) => LABELS[c] ?? c).join(", ")}
                 </p>
               )}
               <ul className="mt-2 flex flex-wrap gap-3 text-xs">
@@ -81,7 +80,11 @@ export function TopicPreview({ plan, limit = 5 }: { plan: PlanItem[]; limit?: nu
                       key={c}
                       className={`flex items-center gap-1 ${done ? "text-signal" : "text-muted-foreground"}`}
                     >
-                      {done ? <CheckCircle2 className="size-3.5" /> : <Circle className="size-3.5" />}
+                      {done ? (
+                        <CheckCircle2 className="size-3.5" />
+                      ) : (
+                        <Circle className="size-3.5" />
+                      )}
                       {LABELS[c]}
                     </li>
                   );

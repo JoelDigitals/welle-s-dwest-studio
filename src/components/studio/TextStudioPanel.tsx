@@ -35,6 +35,7 @@ function useScript() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<{ name: string; voice: string } | null>(null);
 
   async function run(kind: string, brief: string) {
     setLoading(true);
@@ -68,7 +69,33 @@ function useScript() {
     }
   }
 
-  return { script, setScript, loading, error, warning, run };
+  /** Nachrichten exakt wie im Autopilot (gleiche Meldungen, gleicher Aufbau, gleiche Stimme). */
+  async function runNews(mode: "full" | "short") {
+    setLoading(true);
+    setError(null);
+    setWarning(null);
+    try {
+      const res = await fetch(`/api/news-script?mode=${mode}`);
+      const data = (await res.json().catch(() => null)) as {
+        text?: string;
+        error?: string;
+        anchor?: { name: string; voice: string };
+        meta?: { editor_needed?: boolean };
+      } | null;
+      if (!res.ok) throw new Error(data?.error ?? `Fehler ${res.status}`);
+      setScript(data?.text ?? "");
+      setAnchor(data?.anchor ?? null);
+      if (data?.meta?.editor_needed) {
+        setWarning("Achtung: Die KI empfiehlt eine redaktionelle Prüfung vor dem Senden.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nachrichten nicht ladbar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return { script, setScript, loading, error, warning, run, runNews, anchor };
 }
 
 export function TextStudioPanel(props: Props) {
@@ -77,10 +104,6 @@ export function TextStudioPanel(props: Props) {
   const newsScript = useScript();
   const trafficScript = useScript();
   const blitzerScript = useScript();
-
-  const newsBrief = props.news
-    .map((n) => `${n.region} (${n.source}): ${n.headline} – ${n.body}`)
-    .join("\n");
 
   // Hörer-Verkehrsmeldungen fehlten hier bisher komplett (nur der offizielle Feed wurde gezeigt
   // und in den Sprechtext-Entwurf übernommen) - gehören aber genauso dazu wie im tatsächlichen
@@ -173,18 +196,21 @@ export function TextStudioPanel(props: Props) {
               <p className="text-sm text-muted-foreground">Keine Nachrichten abrufbar.</p>
             )}
           </div>
-          <Button
-            disabled={loadingOrEmpty(newsBrief, newsScript.loading)}
-            onClick={() =>
-              void newsScript.run("Nachrichten (faktengetreu umformulieren)", newsBrief)
-            }
-          >
+          <Button disabled={newsScript.loading} onClick={() => void newsScript.runNews("full")}>
             {newsScript.loading ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Sparkles className="size-4" />
             )}
-            Nachrichten-Sprechtext generieren
+            Nachrichten wie im Autopilot
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={newsScript.loading}
+            onClick={() => void newsScript.runNews("short")}
+          >
+            Kurznachrichten
           </Button>
           {newsScript.error && <p className="text-sm text-destructive">{newsScript.error}</p>}
           {newsScript.script && (
@@ -193,10 +219,16 @@ export function TextStudioPanel(props: Props) {
               onChange={newsScript.setScript}
               warning={newsScript.warning}
               onPlay={() =>
-                props.playNow(scriptItem("news", "Nachrichten (Text-Studio)", newsScript.script))
+                props.playNow({
+                  ...scriptItem("news", "Nachrichten (Text-Studio)", newsScript.script),
+                  ...(newsScript.anchor ? { voice: newsScript.anchor.voice } : {}),
+                })
               }
               onCue={() =>
-                props.cueNext(scriptItem("news", "Nachrichten (Text-Studio)", newsScript.script))
+                props.cueNext({
+                  ...scriptItem("news", "Nachrichten (Text-Studio)", newsScript.script),
+                  ...(newsScript.anchor ? { voice: newsScript.anchor.voice } : {}),
+                })
               }
             />
           )}

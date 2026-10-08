@@ -313,7 +313,7 @@ export async function tryGenerateDailyTheme(opts: {
  *  Meldungen wird frei und warm geschrieben statt roh nacheinander vorgelesen. */
 const HOTLINE_MIX_SYSTEM = `Du bist Moderator:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und liest gerade Meldungen aus der Hörer-Hotline vor: Grüße, Musikwünsche, Lob und Kritik oder Sonstiges.
 Du bekommst eine Liste roher Hörer-Meldungen (Art, ggf. Name, Nachricht). Verändere NIEMALS den Kern einer Meldung (wer grüßt wen, welcher Song gewünscht wird, worum es bei Lob/Kritik geht) und erfinde keine neuen Namen oder Details dazu – aber verbinde die Meldungen zu einem warmen, natürlichen, flüssig gesprochenen Moderationstext, statt sie roh nacheinander vorzulesen.
-Diese Meldungen sind unbestätigte Hörer-Hinweise: mach das klar hörbar (z. B. "Hinweis – nicht bestätigt" oder "unbestätigte Hörermeldung"). Bedank dich bei den Hörer:innen fürs Melden und geh kurz und persönlich auf jede einzelne Meldung ein.
+Bedank dich bei den Hörer:innen fürs Melden und geh kurz und persönlich auf jede einzelne Meldung ein.
 Gesprochene Sprache, herzlich, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
 
 /** Wie tryHumanizeCorrespondentReport, aber mit dem Hotline-Mix-Prompt. */
@@ -369,7 +369,7 @@ export async function tryHumanizeBlitzer(text: string, hostName?: string): Promi
 const TRAFFIC_SYSTEM = `Du bist Moderator:in und Verkehrsfunk-Sprecher:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz).
 Du bekommst einen fertigen Verkehrsblock (offizielle Meldungen und/oder Hörer-Hinweise). Verändere NIEMALS Fakten: Straßen, Orte, Fahrtrichtungen, Ursachen (Stau, Unfall, Baustelle, Sperrung), Staulängen, Zeitangaben und Minuten dürfen nicht erfunden, weggelassen oder geändert werden.
 Wandle die rohe Meldungsliste in flüssig gesprochene, natürliche Sätze um, so wie ein echter Verkehrsfunk-Moderator spricht – mit normaler Satzmelodie, nicht wie eine Aufzählung oder ein abgelesener Polizeibericht.
-Hörer-Hinweise (aus der Hörer-Hotline) müssen als unbestätigte Hinweise von Hörer:innen erkennbar bleiben ("Hinweis – nicht bestätigt: ein Hörer meldet ...") und dürfen nicht als offizielle Meldung klingen. Nenne NIE, woher die offiziellen Meldungen stammen (keine Datenquelle, kein Sender, keine Webseite).
+Hörer-Hinweise (aus der Hörer-Hotline) müssen als Hinweise von Hörer:innen erkennbar bleiben ("Ein Hörer meldet ...") und dürfen nicht als offizielle Meldung klingen. Sag NICHT dazu, dass sie "nicht bestätigt" oder "unbestätigt" sind. Nenne NIE, woher die offiziellen Meldungen stammen (keine Datenquelle, kein Sender, keine Webseite).
 Halte dich an die vorgegebene Reihenfolge, kürze nichts weg und füge keine neuen Meldungen oder Orte hinzu.
 Vermeide doppelte oder unsinnige Formulierungen wie "wegen einer Sperrung gesperrt" oder "Stau wegen Stau" – nenne einen Grund nur, wenn er wirklich etwas Neues sagt. Wiederhole Hinweise wie "Bitte weiträumig umfahren" nicht nach jeder Meldung, sondern formuliere abwechslungsreich und verbinde die Meldungen zu einem flüssigen Verkehrsblock.
 Gesprochene Sprache, sachlich, klar, keine Regieanweisungen, keine Emojis, keine Aufzählungszeichen.`;
@@ -475,5 +475,44 @@ export async function tryWriteNewsArticle(
     return article ? { article, generated: true } : { article: fallback, generated: false };
   } catch {
     return { article: fallback, generated: false };
+  }
+}
+
+/** Themenfinder für Zwischenansagen und Moderationen: aus dem, was es gerade wirklich gibt
+ *  (regionale Meldungen, Aktionstage, Wetter, Wochentag) kurze Gesprächsthemen vorschlagen –
+ *  ohne erfundene Fakten (das Regelwerk hängt generateText automatisch an). */
+const TALK_TOPICS_SYSTEM = `Du bist Redakteur:in bei "Welle Südwest" (Saarland und Rheinland-Pfalz) und suchst Themen für kurze Zwischenmoderationen.
+Du bekommst aktuelle regionale Meldungen, Aktionstage von heute, das Wetter und den Wochentag.
+Schlage 6 kurze, alltagsnahe Gesprächsthemen vor, über die Moderator:innen zwischen zwei Songs 2–3 Sätze sprechen können (z. B. eine Frage an die Hörer:innen, ein Alltagsbezug, ein regionaler Aufhänger).
+Jedes Thema als eine Zeile, 4 bis 12 Wörter, ohne Nummerierung, ohne Anführungszeichen. Nutze nur, was in den Angaben steht – erfinde keine Ereignisse, Termine oder Zahlen. Keine schweren Themen (Unglücke, Kriminalität, Politikstreit) als Plauderthema.`;
+
+export async function tryGenerateTalkTopics(opts: {
+  headlines: string[];
+  actionDays: string[];
+  weather: string;
+  weekday: string;
+}): Promise<string[]> {
+  const fallback = [...opts.actionDays.map((d) => `Heute ist ${d}`)].slice(0, 6);
+  try {
+    const { text } = await generateText({
+      system: TALK_TOPICS_SYSTEM,
+      user: `Wochentag: ${opts.weekday}\nWetter: ${opts.weather || "unbekannt"}\nAktionstage heute: ${
+        opts.actionDays.join(" | ") || "keine"
+      }\nRegionale Meldungen: ${opts.headlines.join(" | ") || "keine"}`,
+      temperature: 0.9,
+      topP: 0.95,
+    });
+    const topics = screenAiText(text)
+      .text.split("\n")
+      .map((l) =>
+        l
+          .replace(/^[\s\-*•\d.)]+/, "")
+          .replace(/["„“]/g, "")
+          .trim(),
+      )
+      .filter((l) => l.length >= 8 && l.length <= 120);
+    return topics.length ? topics.slice(0, 8) : fallback;
+  } catch {
+    return fallback;
   }
 }

@@ -172,16 +172,24 @@ export function LivePanel(props: Props) {
       "traffic",
     );
 
-  const newsNow = () => {
-    const top = props.news.slice(0, 3);
-    const brief = top.map((n) => `${n.headline}. ${n.body}`).join(" ");
+  /** Nachrichten exakt wie im Autopilot (gleiche Meldungen, "Mit NAME", gleiche Stimme). */
+  const newsNow = async (): Promise<LiveQueueItemInput> => {
+    const data = (await fetch("/api/news-script?mode=short")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)) as {
+      text?: string;
+      anchor?: { id: string; name: string; voice: string };
+    } | null;
+    const text = data?.text || "Aktuell liegen keine neuen Meldungen vor.";
     return {
-      kind: "news" as const,
-      title: "Nachrichten (manuell)",
-      subtitle: "Aktuelle Meldungen",
-      text: brief || "Aktuell liegen keine neuen Meldungen vor.",
-      voice: host.voice,
-      duration: speakDuration(brief || " "),
+      kind: "news",
+      title: "Nachrichten (live)",
+      subtitle: data?.anchor ? `mit ${data.anchor.name}` : "Aktuelle Meldungen",
+      text,
+      voice: data?.anchor?.voice ?? host.voice,
+      hostId: data?.anchor?.id,
+      hostName: data?.anchor?.name,
+      duration: speakDuration(text),
     };
   };
 
@@ -720,17 +728,20 @@ export function LivePanel(props: Props) {
             <Newspaper className="size-4" /> Nachrichten jetzt
           </h4>
           <p className="text-xs text-muted-foreground">
-            Liest die {Math.min(3, props.news.length)} aktuellsten Meldungen mit KI-Stimme vor –
-            einzige KI-Ansage, die für echte Livesendungen vorgesehen ist.
+            Die Kurznachrichten genau wie im Autopilot – gleiche Meldungen, gleicher Aufbau („Mit
+            NAME“ und dann direkt die Meldungen), gleiche Stimme.
           </p>
           <div className="flex gap-2">
-            <Button disabled={!props.news.length} onClick={() => props.playNow(newsNow())}>
+            <Button
+              disabled={!props.news.length}
+              onClick={() => void newsNow().then(props.playNow)}
+            >
               Sofort senden
             </Button>
             <Button
               variant="secondary"
               disabled={!props.news.length}
-              onClick={() => props.cueNext(newsNow())}
+              onClick={() => void newsNow().then(props.cueNext)}
             >
               Als Nächstes
             </Button>

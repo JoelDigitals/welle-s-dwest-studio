@@ -235,6 +235,8 @@ export type PlanContext = {
   /** Tagesthema je Sendung (showId -> Thema), wiederholt sich nicht innerhalb von 90 Tagen –
    *  siehe show-topics-store.ts / ensureDailyThemes in station-engine.ts. */
   dailyThemes?: Record<string, string>;
+  /** Automatisch gefundene Gesprächsthemen für Zwischenansagen/Moderationen (Themenfinder). */
+  talkTopics?: string[];
   /** IDs bereits automatisch vorgelesener Hotline-Meldungen (siehe pushHotlineMix in planner.ts) –
    *  verhindert, dass dieselbe Gruß-/Musikwunsch-/Lob&Kritik-Meldung stundenlang wiederholt wird. */
   hotlineAnnouncedIds?: string[];

@@ -102,7 +102,12 @@ export function NewsroomPanel(props: Props) {
       };
       if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
       setSelection(data.selection ?? []);
-      setScript(data.script ?? "");
+      // Sprechtext genau wie im Autopilot (gleiche Meldungen, gleicher Aufbau) – die KI-Auswahl
+      // oben bleibt als Übersicht für die Redaktion.
+      const same = await fetch(`/api/news-script?mode=${mode}`)
+        .then((r) => (r.ok ? (r.json() as Promise<{ text?: string }>) : null))
+        .catch(() => null);
+      setScript(same?.text ?? data.script ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Auswahl fehlgeschlagen");
     } finally {

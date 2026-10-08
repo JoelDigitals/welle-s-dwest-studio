@@ -81,9 +81,7 @@ export function StatistikPanel({
             ))}
           </div>
         )}
-        {!listenerStats && (
-          <p className="text-sm text-muted-foreground">Lädt …</p>
-        )}
+        {!listenerStats && <p className="text-sm text-muted-foreground">Lädt …</p>}
       </section>
 
       <section className="panel space-y-3 p-5">

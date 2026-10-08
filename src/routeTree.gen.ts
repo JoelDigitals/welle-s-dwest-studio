@@ -25,6 +25,7 @@ import { Route as ApiScriptRouteImport } from './routes/api/script'
 import { Route as ApiScheduledShowsRouteImport } from './routes/api/scheduled-shows'
 import { Route as ApiProductionRouteImport } from './routes/api/production'
 import { Route as ApiNewsroomRouteImport } from './routes/api/newsroom'
+import { Route as ApiNewsScriptRouteImport } from './routes/api/news-script'
 import { Route as ApiNewsRouteImport } from './routes/api/news'
 import { Route as ApiMicStreamRouteImport } from './routes/api/mic-stream'
 import { Route as ApiMediaRouteImport } from './routes/api/media'
@@ -128,6 +129,11 @@ const ApiProductionRoute = ApiProductionRouteImport.update({
 const ApiNewsroomRoute = ApiNewsroomRouteImport.update({
   id: '/api/newsroom',
   path: '/api/newsroom',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiNewsScriptRoute = ApiNewsScriptRouteImport.update({
+  id: '/api/news-script',
+  path: '/api/news-script',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiNewsRoute = ApiNewsRouteImport.update({
@@ -273,6 +279,7 @@ export interface FileRoutesByFullPath {
   '/api/media': typeof ApiMediaRoute
   '/api/mic-stream': typeof ApiMicStreamRoute
   '/api/news': typeof ApiNewsRoute
+  '/api/news-script': typeof ApiNewsScriptRoute
   '/api/newsroom': typeof ApiNewsroomRoute
   '/api/production': typeof ApiProductionRoute
   '/api/scheduled-shows': typeof ApiScheduledShowsRoute
@@ -315,6 +322,7 @@ export interface FileRoutesByTo {
   '/api/media': typeof ApiMediaRoute
   '/api/mic-stream': typeof ApiMicStreamRoute
   '/api/news': typeof ApiNewsRoute
+  '/api/news-script': typeof ApiNewsScriptRoute
   '/api/newsroom': typeof ApiNewsroomRoute
   '/api/production': typeof ApiProductionRoute
   '/api/scheduled-shows': typeof ApiScheduledShowsRoute
@@ -358,6 +366,7 @@ export interface FileRoutesById {
   '/api/media': typeof ApiMediaRoute
   '/api/mic-stream': typeof ApiMicStreamRoute
   '/api/news': typeof ApiNewsRoute
+  '/api/news-script': typeof ApiNewsScriptRoute
   '/api/newsroom': typeof ApiNewsroomRoute
   '/api/production': typeof ApiProductionRoute
   '/api/scheduled-shows': typeof ApiScheduledShowsRoute
@@ -402,6 +411,7 @@ export interface FileRouteTypes {
     | '/api/media'
     | '/api/mic-stream'
     | '/api/news'
+    | '/api/news-script'
     | '/api/newsroom'
     | '/api/production'
     | '/api/scheduled-shows'
@@ -444,6 +454,7 @@ export interface FileRouteTypes {
     | '/api/media'
     | '/api/mic-stream'
     | '/api/news'
+    | '/api/news-script'
     | '/api/newsroom'
     | '/api/production'
     | '/api/scheduled-shows'
@@ -486,6 +497,7 @@ export interface FileRouteTypes {
     | '/api/media'
     | '/api/mic-stream'
     | '/api/news'
+    | '/api/news-script'
     | '/api/newsroom'
     | '/api/production'
     | '/api/scheduled-shows'
@@ -529,6 +541,7 @@ export interface RootRouteChildren {
   ApiMediaRoute: typeof ApiMediaRoute
   ApiMicStreamRoute: typeof ApiMicStreamRoute
   ApiNewsRoute: typeof ApiNewsRoute
+  ApiNewsScriptRoute: typeof ApiNewsScriptRoute
   ApiNewsroomRoute: typeof ApiNewsroomRoute
   ApiProductionRoute: typeof ApiProductionRoute
   ApiScheduledShowsRoute: typeof ApiScheduledShowsRoute
@@ -663,6 +676,13 @@ declare module '@tanstack/react-router' {
       path: '/api/newsroom'
       fullPath: '/api/newsroom'
       preLoaderRoute: typeof ApiNewsroomRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/news-script': {
+      id: '/api/news-script'
+      path: '/api/news-script'
+      fullPath: '/api/news-script'
+      preLoaderRoute: typeof ApiNewsScriptRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/news': {
@@ -857,6 +877,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMediaRoute: ApiMediaRoute,
   ApiMicStreamRoute: ApiMicStreamRoute,
   ApiNewsRoute: ApiNewsRoute,
+  ApiNewsScriptRoute: ApiNewsScriptRoute,
   ApiNewsroomRoute: ApiNewsroomRoute,
   ApiProductionRoute: ApiProductionRoute,
   ApiScheduledShowsRoute: ApiScheduledShowsRoute,

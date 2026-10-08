@@ -252,6 +252,8 @@ export const SHOWS: Show[] = [
     weekendHostId: "h10",
     colour: "Wacher Pop & aktuelle Charts",
     topics: ["Wetter & Weg zur Arbeit", "Kurioses vom Morgen", "Was heute wichtig wird"],
+    // Morgenshow zu zweit (wie im echten Morgenradio).
+    coHostId: "h7",
   },
   {
     id: "sh8",

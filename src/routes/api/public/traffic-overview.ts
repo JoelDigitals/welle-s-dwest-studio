@@ -5,7 +5,7 @@ import {
   startStationEngine,
 } from "@/lib/server/station-engine";
 import { listHotlineReports } from "@/lib/server/hotline-store";
-import { stripExactSpot, classifyTraffic, dedupeByLocation } from "@/lib/planner";
+import { stripExactSpot, classifyTraffic, dedupeByLocation, withoutResolved } from "@/lib/planner";
 
 startStationEngine();
 
@@ -36,9 +36,9 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
     handlers: {
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
       GET: async () => {
-        const traffic = getTrafficSnapshot();
         const now = Date.now();
         const allHotline = await listHotlineReports();
+        const traffic = withoutResolved(getTrafficSnapshot(), allHotline, now);
         const freshBlitzer = allHotline.filter(
           (h) => h.type === "blitzer" && now - h.createdAt < BLITZER_FRESH_MS,
         );
@@ -57,15 +57,17 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
           confirmed: false,
         }));
         // Abgeglichene Blitzer von Radio Salü/RPR1 – stehen so lange da, wie die Quelle sie führt.
-        const stationBlitzer = getStationBlitzerSnapshot().map((b) => ({
-          id: b.id,
-          region: b.region,
-          place: null,
-          road: b.road || null,
-          message: stripExactSpot(b.title) || null,
-          createdAt: b.reportedAt,
-          confirmed: true,
-        }));
+        const stationBlitzer = withoutResolved(getStationBlitzerSnapshot(), allHotline, now).map(
+          (b) => ({
+            id: b.id,
+            region: b.region,
+            place: null,
+            road: b.road || null,
+            message: stripExactSpot(b.title) || null,
+            createdAt: b.reportedAt,
+            confirmed: true,
+          }),
+        );
         const blitzer = [...stationBlitzer, ...hotlineBlitzer].sort(
           (a, b) => b.createdAt - a.createdAt,
         );

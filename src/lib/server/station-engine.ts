@@ -1,4 +1,4 @@
-import { buildPlan, urgentTrafficItems } from "@/lib/planner";
+import { buildPlan, urgentTrafficItems, withoutResolved } from "@/lib/planner";
 import {
   MORNING_SLOT,
   OVERLAY_DUCKING_DB,
@@ -46,6 +46,7 @@ import {
   tryHumanizeBlitzer,
   tryHumanizeCivilWarning,
   tryHumanizeNewsReaction,
+  tryGenerateTalkTopics,
   rankNewsByImportance,
 } from "./moderation-text";
 import { analyzeMp3 } from "./mp3-audio";
@@ -70,6 +71,7 @@ import {
 } from "./show-topics-store";
 import { SHOWS } from "@/lib/radio-config";
 import { berlinDateKey } from "@/lib/berlin-time";
+import { weatherCodeToSky } from "@/lib/weather-codes";
 import { CURIOSITY_DAYS } from "@/lib/curiosity-days";
 import { ensureArticlesPersisted, upgradeThinArticles } from "./news-articles-store";
 
@@ -146,6 +148,8 @@ type EngineState = {
   traffic: { items: TrafficFeedItem[]; at: number };
   /** Blitzer + Verkehr von Radio Salü/RPR1, abgeglichen mit der Datenbank. */
   stationReports: { items: StoredStationReport[]; at: number };
+  /** Themenfinder: Gesprächsthemen für Zwischenansagen, stündlich neu. */
+  talkTopics: { items: string[]; at: number };
   /** Amtliche Warnungen (BBK: MoWaS/DWD/Katwarn/Polizei/Hochwasser/Biwapp) für Saarland/RLP. */
   warnings: { items: CivilWarning[]; at: number };
   /** "<id>:<version>"-Schlüssel bereits vorgelesener Warnungen – verhindert Wiederholung. */
@@ -214,6 +218,7 @@ function getState(): EngineState {
     news: { items: [], at: 0 },
     traffic: { items: [], at: 0 },
     stationReports: { items: [], at: 0 },
+    talkTopics: { items: [], at: 0 },
     warnings: { items: [], at: 0 },
     warningsAnnounced: new Set(),
     weather: { data: null, at: 0 },
@@ -407,6 +412,9 @@ async function refreshFeeds(state: EngineState) {
   }
   await Promise.all(jobs);
   // Bewusst nicht awaited (siehe Kommentar an ensureDailyThemes) – darf den Tick nicht blockieren.
+  void ensureTalkTopics(state).catch((err) =>
+    console.error("[station-engine] Themenfinder fehlgeschlagen:", err),
+  );
   void ensureDailyThemes(state).catch((err) =>
     console.error("[station-engine] Tagesthemen fehlgeschlagen:", err),
   );
@@ -432,7 +440,22 @@ function trafficWords(text: string) {
 /** Offizielle Meldungen + Salü/RPR1 zusammenführen – dieselbe Lage (gleiche Straße, mindestens
  *  zwei gemeinsame Ortswörter) nur einmal, die offizielle Autobahn-Meldung hat Vorrang. */
 function mergedTraffic(state: EngineState): TrafficFeedItem[] {
-  const out = [...state.traffic.items];
+  // Aufräumen: Nachrichtenartikel (RSS) über eine Lage, die die Autobahn-API oder Salü/RPR1
+  // schon führt, sind doppelt und oft veraltet – nur behalten, was sonst niemand meldet.
+  const api = state.traffic.items.filter((t) => t.source !== "rss");
+  const stationTexts = state.stationReports.items
+    .filter((r) => r.type === "verkehr")
+    .map((r) => ({ road: r.road, words: trafficWords(r.title) }));
+  const rss = state.traffic.items.filter((t) => {
+    if (t.source !== "rss") return false;
+    const words = trafficWords(`${t.headline} ${t.message}`);
+    const overlaps = (other: Set<string>) => [...other].filter((w) => words.has(w)).length >= 2;
+    return (
+      !api.some((a) => overlaps(trafficWords(`${a.headline} ${a.message}`))) &&
+      !stationTexts.some((s) => overlaps(s.words))
+    );
+  });
+  const out = [...api, ...rss];
   for (const r of state.stationReports.items) {
     if (r.type !== "verkehr") continue;
     const words = trafficWords(r.title);
@@ -456,11 +479,36 @@ function mergedTraffic(state: EngineState): TrafficFeedItem[] {
   return out;
 }
 
+/** Themenfinder: stündlich aus regionalen Meldungen, Aktionstagen, Wetter und Wochentag neue
+ *  Gesprächsthemen für Zwischenansagen holen (läuft im Hintergrund, blockiert den Tick nicht). */
+async function ensureTalkTopics(state: EngineState) {
+  const now = Date.now();
+  if (now - state.talkTopics.at < 60 * 60_000) return;
+  if (!state.news.items.length) return; // erst wenn Meldungen da sind
+  state.talkTopics.at = now;
+  const headlines = state.news.items
+    .filter((n) => n.region === "Saarland" || n.region === "Rheinland-Pfalz")
+    .slice(0, 8)
+    .map((n) => n.headline);
+  const today = berlinDateKey(now);
+  const actionDays = regionalActionDays(CURIOSITY_DAYS[today.slice(5)] ?? []);
+  const w = state.weather.data;
+  const weather = w ? `${Math.round(w.currentTemp)} Grad, ${weatherCodeToSky(w.currentCode)}` : "";
+  const weekday = new Date(now).toLocaleDateString("de-DE", {
+    weekday: "long",
+    timeZone: "Europe/Berlin",
+  });
+  const items = await tryGenerateTalkTopics({ headlines, actionDays, weather, weekday });
+  if (items.length) state.talkTopics = { items, at: now };
+}
+
 async function buildContext(state: EngineState): Promise<PlanContext> {
+  const hotline = await listHotlineReports();
   return {
     media: state.media.items,
     news: state.news.items,
-    traffic: mergedTraffic(state),
+    // Aufgehobene Lagen (Hörer-Entwarnung) fliegen raus – auch aus Salü/offiziellen Meldungen.
+    traffic: withoutResolved(mergedTraffic(state), hotline),
     stationBlitzer: state.stationReports.items
       .filter((r) => r.type === "blitzer")
       .map((r) => ({
@@ -472,11 +520,12 @@ async function buildContext(state: EngineState): Promise<PlanContext> {
         reportedAt: r.reportedAt,
       })),
     reports: [],
-    hotline: await listHotlineReports(),
+    hotline,
     freeMusic: state.freeMusic.items,
     adCampaigns: listApprovedAdCampaigns(),
     liveSlots: state.scheduledShows.items,
     dailyThemes: state.dailyThemes.items,
+    talkTopics: state.talkTopics.items,
     hotlineAnnouncedIds: listAnnouncedHotlineIds(),
     markHotlineAnnounced,
     civilWarnings: state.warnings.items,
