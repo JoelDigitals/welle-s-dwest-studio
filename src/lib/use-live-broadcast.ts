@@ -22,7 +22,10 @@ const HEARTBEAT_INTERVAL_MS = 20_000;
 function sendListenerEvent(type: "start" | "heartbeat", clientId: string) {
   const body = JSON.stringify({ clientId, type });
   if (navigator.sendBeacon) {
-    navigator.sendBeacon("/api/public/listener-event", new Blob([body], { type: "application/json" }));
+    navigator.sendBeacon(
+      "/api/public/listener-event",
+      new Blob([body], { type: "application/json" }),
+    );
     return;
   }
   void fetch("/api/public/listener-event", {
@@ -455,6 +458,44 @@ export function useLiveBroadcast() {
       fadeRafRef.current = requestAnimationFrame(step);
     }
   }, [playing, stream, state?.uid, elapsedNow]);
+
+  // Dauer-Stream abspielen, solange "playing" an ist – im Studio ("Sendung starten") genauso wie
+  // im Webplayer. Jedes Mal eine frische Verbindung (Cache-Buster), damit man an der aktuellen
+  // Stelle einsteigt statt in einem gepufferten alten Stück; reißt der Stream ab, wird nach kurzer
+  // Pause neu verbunden.
+  useEffect(() => {
+    if (!playing || !stream) return;
+    let stopped = false;
+    let audio: HTMLAudioElement | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const connect = () => {
+      if (stopped) return;
+      audio = new Audio(`${stream}${stream.includes("?") ? "&" : "?"}t=${Date.now()}`);
+      const reconnect = () => {
+        if (stopped) return;
+        audio?.pause();
+        retry = setTimeout(connect, 2000);
+      };
+      audio.addEventListener("error", reconnect);
+      audio.addEventListener("ended", reconnect);
+      audio
+        .play()
+        .then(() => setJoinError(null))
+        .catch(() => {
+          setJoinError("Der Browser hat die Wiedergabe blockiert – bitte noch einmal klicken.");
+        });
+    };
+    connect();
+    return () => {
+      stopped = true;
+      clearTimeout(retry);
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
+    };
+  }, [playing, stream]);
 
   useEffect(() => {
     if (playing || stream) return;

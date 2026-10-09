@@ -13,6 +13,7 @@ import postgres from "postgres";
  */
 const g = globalThis as unknown as {
   __pg?: ReturnType<typeof postgres>;
+  __pgRaw?: ReturnType<typeof postgres>;
   __schemaReady?: boolean;
 };
 
@@ -30,14 +31,54 @@ const workerEnv = isWorkers
     ).env
   : undefined;
 
+/** Höchstdauer einer einzelnen Abfrage auf dem Node-Server, bevor sie abgebrochen und der
+ *  Verbindungs-Pool neu aufgebaut wird. */
+const QUERY_TIMEOUT_MS = 20_000;
+
+/**
+ * Node-Server (Render): ein gemeinsamer Pool, aber mit Wächter. Vorfall Oktober 2026: Nach einem
+ * Neustart mitten in einer Abfrage hingen Verbindungen halb offen im Pooler; der Client wartete
+ * endlos auf Antworten, alle weiteren Abfragen reihten sich dahinter ein – jede Datenbank-Route
+ * (Hotline, Verkehr, Login) hing. Jetzt bricht eine Abfrage nach 20 s ab, und der Pool wird
+ * verworfen und frisch aufgebaut.
+ */
+function nodePool() {
+  g.__pgRaw ??= postgres(process.env.DATABASE_URL ?? "", {
+    prepare: false,
+    ssl: "require",
+    connect_timeout: 10,
+    idle_timeout: 30,
+    max_lifetime: 30 * 60,
+  });
+  g.__pg ??= new Proxy(g.__pgRaw, {
+    apply(target, thisArg, args: unknown[]) {
+      const query = Reflect.apply(target, thisArg, args) as {
+        then?: unknown;
+        cancel?: () => void;
+        finally?: (cb: () => void) => unknown;
+      };
+      if (typeof query?.then !== "function" || typeof query.finally !== "function") return query;
+      const timer = setTimeout(() => {
+        console.error("[db] Abfrage hing über 20 s – wird abgebrochen, Pool wird neu aufgebaut.");
+        try {
+          query.cancel?.();
+        } catch {
+          /* egal */
+        }
+        const old = g.__pgRaw;
+        g.__pgRaw = undefined;
+        g.__pg = undefined;
+        void old?.end({ timeout: 1 }).catch(() => undefined);
+      }, QUERY_TIMEOUT_MS);
+      void (query.finally(() => clearTimeout(timer)) as Promise<unknown>).catch?.(() => undefined);
+      return query;
+    },
+  });
+  return g.__pg;
+}
+
 export function getDb() {
-  if (!isWorkers) {
-    g.__pg ??= postgres(process.env.DATABASE_URL ?? "", {
-      prepare: false,
-      ssl: "require",
-    });
-    return g.__pg;
-  }
+  if (!isWorkers) return nodePool();
 
   // Cloudflare Workers: Sockets dürfen nicht über Requests hinweg geteilt werden (I/O-Objekte
   // gehören zum Request, der sie erzeugt hat) – daher KEIN globaler Client, sondern pro Aufruf

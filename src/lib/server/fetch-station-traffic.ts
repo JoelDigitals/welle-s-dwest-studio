@@ -20,6 +20,8 @@ export type StationReport = {
 };
 
 const UA = "Mozilla/5.0 (compatible; WelleSuedwestBot/1.0)";
+const SAAR_HINT =
+  /(saar|neunkirchen|homburg|st\.? ingbert|sankt ingbert|völklingen|merzig|dillingen|lebach|st\.? wendel|sankt wendel|blieskastel|elversberg|friedrichsthal|püttlingen|bexbach|ottweiler|illingen|losheim|perl|mettlach)/i;
 const RLP_HINT =
   /(trier|kaiserslautern|pirmasens|zweibrücken|ernstweiler|landstuhl|koblenz|mainz|pfalz|hunsrück|mosel|schweich|wittlich|idar|birkenfeld|kusel|ludwigshafen|worms|speyer|landau|bitburg|prüm)/i;
 
@@ -97,12 +99,25 @@ export async function fetchSalueReports(): Promise<StationReport[] | null> {
       if (!title) continue;
       const type = /blitzer/i.test(kind) ? "blitzer" : "verkehr";
       const stamp = desc.match(/(\d{2}\.\d{2}\.\d{4})\s+(\d{1,2}:\d{2})/);
+      // Salü meldet auch Fernverkehr (z. B. "A38 Halle Richtung Göttingen") – Autobahn-Meldungen
+      // nur, wenn der Abschnitt im Saarland oder in Rheinland-Pfalz liegt.
+      const road = roadOf(title);
+      if (
+        type === "verkehr" &&
+        /^A/.test(road) &&
+        !isRegionalTraffic(road, title, "Saarland") &&
+        !isRegionalTraffic(road, title, "Rheinland-Pfalz") &&
+        !RLP_HINT.test(title) &&
+        !SAAR_HINT.test(title)
+      ) {
+        continue;
+      }
       out.push({
         id: `salue-${hash(rawTitle)}`,
         source: "salue",
         type,
         region: RLP_HINT.test(title) ? "Rheinland-Pfalz" : "Saarland",
-        road: roadOf(title),
+        road,
         title,
         reportedAt: stamp ? parseBerlin(stamp[1], stamp[2]) : null,
       });

@@ -25,10 +25,16 @@ export const Route = createFileRoute("/player")({
  *  Bediener selbst gesetzten Titel (kein Dateiname/Interpret vorhanden). Bei allem anderen
  *  (Zwischenansagen, Nachrichten, Werbung, ...) steht nur der Sendername da – niemand braucht
  *  den Wortlaut einer Ansage als Laufschrift. */
-function tickerText(kind: string | null | undefined, title: string | null, subtitle: string | null) {
+function tickerText(
+  kind: string | null | undefined,
+  title: string | null,
+  subtitle: string | null,
+) {
   if (kind === "music" && title) {
     const artist = subtitle?.split(" · ")[0]?.trim();
-    return artist ? `${title} -- ${artist} -- Welle Süd-West -- ` : `${title} -- Welle Süd-West -- `;
+    return artist
+      ? `${title} -- ${artist} -- Welle Süd-West -- `
+      : `${title} -- Welle Süd-West -- `;
   }
   if (kind === "mic" && title) {
     return `${title} -- Welle Süd-West -- `;
@@ -84,13 +90,13 @@ function Player() {
         </div>
       </section>
 
-      {playing && stream && <audio src={stream} autoPlay className="hidden" />}
-      {playing && !stream && !state?.onAir && (
+      {/* Der Dauer-Stream wird in useLiveBroadcast abgespielt (gleich wie im Studio). */}
+      {playing && !state?.onAir && (
         <p className="mx-auto mt-3 max-w-2xl text-center text-xs text-muted-foreground">
           Sender startet gerade – bitte einen Moment Geduld.
         </p>
       )}
-      {playing && !stream && joinError && (
+      {playing && joinError && (
         <p className="mx-auto mt-3 max-w-2xl text-center text-xs text-destructive">{joinError}</p>
       )}
     </main>

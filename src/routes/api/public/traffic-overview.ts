@@ -37,7 +37,14 @@ export const Route = createFileRoute("/api/public/traffic-overview")({
       OPTIONS: async () => new Response(null, { status: 204, headers: cors }),
       GET: async () => {
         const now = Date.now();
-        const allHotline = await listHotlineReports();
+        // Höchstens 4 s auf die Hotline warten – die Website bricht nach 5 s ab; lieber ohne
+        // Hörer-Meldungen antworten als gar nicht.
+        const allHotline = await Promise.race([
+          listHotlineReports(),
+          new Promise<Awaited<ReturnType<typeof listHotlineReports>>>((resolve) =>
+            setTimeout(() => resolve([]), 4000),
+          ),
+        ]).catch(() => []);
         const traffic = withoutResolved(getTrafficSnapshot(), allHotline, now);
         const freshBlitzer = allHotline.filter(
           (h) => h.type === "blitzer" && now - h.createdAt < BLITZER_FRESH_MS,
