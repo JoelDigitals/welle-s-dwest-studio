@@ -63,6 +63,29 @@ export function getDb() {
 export async function ensureSchema() {
   if (g.__schemaReady) return;
   const sql = getDb();
+  // Schnellprüfung: Ist das Schema schon vollständig (neueste Tabelle + neueste Spalte vorhanden),
+  // läuft KEIN einziges DDL-Statement. Vorher lief bei jedem Prozessstart (auf Cloudflare ständig)
+  // eine Kette aus CREATE/ALTER TABLE – ALTER braucht eine exklusive Tabellensperre; musste eine
+  // davon hinter einer laufenden Abfrage warten, stauten sich alle folgenden Abfragen dahinter und
+  // der ganze Sender stand still (Vorfall Oktober 2026).
+  const [check] = await sql`
+    SELECT
+      to_regclass('public.station_reports') IS NOT NULL AS has_reports,
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'media_library' AND column_name = 'schedule_time_until'
+      ) AS has_media_cols,
+      EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'news_articles' AND column_name = 'image_url'
+      ) AS has_news_cols
+  `;
+  if (check?.has_reports && check.has_media_cols && check.has_news_cols) {
+    g.__schemaReady = true;
+    return;
+  }
+  // Fehlt doch etwas: Sperren nur kurz abwarten statt einen Stau auszulösen.
+  await sql`SET lock_timeout = '5s'`.catch(() => undefined);
   await sql`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,

@@ -502,8 +502,16 @@ async function ensureTalkTopics(state: EngineState) {
   if (items.length) state.talkTopics = { items, at: now };
 }
 
+let hotlineCache: Awaited<ReturnType<typeof listHotlineReports>> = [];
+
 async function buildContext(state: EngineState): Promise<PlanContext> {
-  const hotline = await listHotlineReports();
+  // Hotline mit Zeitlimit: hängt die Datenbank, plant die Engine mit dem letzten bekannten Stand.
+  const hotline = await withTimeout(listHotlineReports(), 8000, "Hotline")
+    .then((items) => {
+      hotlineCache = items;
+      return items;
+    })
+    .catch(() => hotlineCache);
   return {
     media: state.media.items,
     news: state.news.items,
@@ -1025,29 +1033,49 @@ function advanceQueue(state: EngineState) {
   }
 }
 
-async function tick() {
+/**
+ * Schneller Takt (alle 250 ms): Wiedergabe weiterschalten, Audio vorbereiten, "Läuft gerade"
+ * veröffentlichen. Rein synchron – wartet NIE auf Datenbank, Feeds oder KI. So läuft der Sender
+ * mit dem vorhandenen Plan weiter, selbst wenn im langsamen Takt etwas hängt (Vorfall Oktober
+ * 2026: eine blockierte Datenbank hielt über den gemeinsamen Takt die ganze Sendung an).
+ */
+function fastTick() {
+  const state = getState();
+  try {
+    ensureAudioPreparing(state);
+    advanceQueue(state);
+    publishNowPlaying(state);
+  } catch (err) {
+    console.error("[station-engine] Wiedergabe-Fehler:", err);
+  }
+}
+
+/** Langsamer Takt: Feeds, Abgleich, geplante Sendungen, Planung, Sofortmeldungen. Jeder Schritt
+ *  mit Zeitlimit; hängt einer trotzdem, gibt der Wächter nach 2 Minuten auf und startet neu. */
+async function slowTick() {
   const state = getState();
   if (state.running) {
-    // Ein einziger nie zurückkehrender await (Feed, DB, KI) würde sonst die Engine für immer
-    // blockieren – der Sendeplan "hängt". Nach 2 Minuten den alten Tick aufgeben.
     if (Date.now() - state.runningSince < TICK_STUCK_MS) return;
-    console.warn("[station-engine] Tick hing seit über 2 Minuten – wird neu gestartet.");
+    console.warn("[station-engine] Datentakt hing seit über 2 Minuten – wird neu gestartet.");
   }
   state.running = true;
   state.runningSince = Date.now();
   try {
-    await refreshFeeds(state);
-
+    await withTimeout(refreshFeeds(state), 60_000, "Feeds").catch((err) =>
+      console.error("[station-engine] Feeds:", err instanceof Error ? err.message : err),
+    );
     tickScheduledShows(state);
-
     if (!state.liveMode) {
-      await tickAutopilotPlanning(state);
-      await tickUrgentTraffic(state);
+      await withTimeout(tickAutopilotPlanning(state), 60_000, "Planung").catch((err) =>
+        console.error("[station-engine] Planung:", err instanceof Error ? err.message : err),
+      );
+      await withTimeout(tickUrgentTraffic(state), 30_000, "Sofortmeldungen").catch((err) =>
+        console.error(
+          "[station-engine] Sofortmeldungen:",
+          err instanceof Error ? err.message : err,
+        ),
+      );
     }
-
-    ensureAudioPreparing(state);
-    advanceQueue(state);
-    publishNowPlaying(state);
   } catch (err) {
     console.error("[station-engine] Tick-Fehler:", err);
   } finally {
@@ -1077,7 +1105,8 @@ export function startStationEngine() {
   if (state.timer) return;
   startMixer();
   try {
-    state.timer = setInterval(() => void tick(), TICK_MS);
+    state.timer = setInterval(fastTick, TICK_MS);
+    setInterval(() => void slowTick(), 1000);
   } catch {
     // Cloudflare Workers verbieten Timer im Global Scope (= beim Modul-Import, wo die Routen
     // diese Funktion aufrufen). Kein Fehler: state.timer bleibt null, der nächste Aufruf
@@ -1085,7 +1114,7 @@ export function startStationEngine() {
     return;
   }
   console.log("[station-engine] Autonome Sende-Engine gestartet.");
-  void tick();
+  void slowTick();
 }
 
 export function getCurrentAudio(): (AudioEntry & { uid: string }) | null {
